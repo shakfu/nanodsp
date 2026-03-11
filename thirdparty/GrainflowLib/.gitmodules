@@ -1,0 +1,3 @@
+[submodule "lib/AudioFile"]
+	path = lib/AudioFile
+	url = https://github.com/adamstark/AudioFile.git
