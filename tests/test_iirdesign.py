@@ -5,7 +5,7 @@ import pytest
 
 from nanodsp._core import iirdesign as iir
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import iir_filter, iir_design
+from nanodsp.effects.filters import iir_filter, iir_design
 
 
 # ---------------------------------------------------------------------------

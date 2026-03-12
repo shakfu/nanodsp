@@ -99,25 +99,25 @@ class TestCoerceValue:
 
 class TestCoerceParams:
     def test_with_signature(self):
-        from nanodsp.effects import lowpass
+        from nanodsp.effects.filters import lowpass
 
         params = coerce_params(lowpass, {"cutoff_hz": "1000"})
         assert params["cutoff_hz"] == pytest.approx(1000.0)
 
     def test_with_int_default(self):
-        from nanodsp.effects import decimator
+        from nanodsp.effects.daisysp import decimator
 
         params = coerce_params(decimator, {"bits_to_crush": "12"})
         assert params["bits_to_crush"] == 12
 
     def test_with_bool_default(self):
-        from nanodsp.effects import decimator
+        from nanodsp.effects.daisysp import decimator
 
         params = coerce_params(decimator, {"smooth": "true"})
         assert params["smooth"] is True
 
     def test_unknown_param_guess(self):
-        from nanodsp.effects import lowpass
+        from nanodsp.effects.filters import lowpass
 
         params = coerce_params(lowpass, {"unknown_param": "3.5"})
         assert params["unknown_param"] == pytest.approx(3.5)
@@ -182,13 +182,13 @@ class TestFunctionRegistry:
 
 class TestFormatSignature:
     def test_with_defaults(self):
-        from nanodsp.effects import lowpass
+        from nanodsp.effects.filters import lowpass
 
         sig = format_signature(lowpass)
         assert "cutoff_hz" in sig
 
     def test_skips_buf_param(self):
-        from nanodsp.effects import lowpass
+        from nanodsp.effects.filters import lowpass
 
         sig = format_signature(lowpass)
         assert "buf" not in sig

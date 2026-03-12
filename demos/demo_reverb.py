@@ -11,7 +11,8 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import reverb, reverb_sc, stk_reverb
+from nanodsp.effects.daisysp import reverb_sc
+from nanodsp.effects.reverb import reverb, stk_reverb
 
 
 def peak_normalize(buf: AudioBuffer) -> AudioBuffer:

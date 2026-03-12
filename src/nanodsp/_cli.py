@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import inspect
+import types
 from typing import Any
 
-from nanodsp import effects, ops, spectral, analysis, synthesis
+from nanodsp import ops, spectral, analysis, synthesis
+from nanodsp.effects import filters, daisysp, dynamics, saturation, reverb, composed
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +97,15 @@ def _register(module: Any, module_name: str, include: set[str] | None = None) ->
             CATEGORIES[module_name].append(name)
 
 
+_EFFECTS_MODULES = [filters, daisysp, dynamics, saturation, reverb, composed]
+
+
 def _build_registry() -> None:
     """Build the function registry from all modules."""
     if _REGISTRY:
         return
-    _register(effects, "effects")
+    for mod in _EFFECTS_MODULES:
+        _register(mod, "effects")
     _register(ops, "ops")
     _register(spectral, "spectral")
     _register(analysis, "analysis")
@@ -429,19 +435,24 @@ PRESETS: dict[str, dict[str, Any]] = {
 def _resolve_preset_fn(fn_str: str) -> Any:
     """Resolve a 'module.function' string to a callable."""
     module_name, func_name = fn_str.split(".", 1)
-    module_map = {
-        "effects": effects,
+    if module_name == "effects":
+        for mod in _EFFECTS_MODULES:
+            fn = getattr(mod, func_name, None)
+            if fn is not None:
+                return fn
+        raise KeyError(f"Unknown function: {fn_str}")
+    module_map: dict[str, types.ModuleType] = {
         "ops": ops,
         "spectral": spectral,
         "analysis": analysis,
         "synthesis": synthesis,
     }
-    mod = module_map.get(module_name)
-    if mod is None:
+    if module_name not in module_map:
         raise KeyError(f"Unknown module in preset: {module_name!r}")
+    mod = module_map[module_name]
     fn = getattr(mod, func_name, None)
     if fn is None:
-        raise KeyError(f"Unknown function: {module_name}.{func_name}")
+        raise KeyError(f"Unknown function: {fn_str}")
     return fn
 
 

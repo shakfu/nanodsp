@@ -5,7 +5,7 @@ import pytest
 
 from nanodsp._core import vafilters
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import (
+from nanodsp.effects.filters import (
     va_moog_ladder,
     va_moog_half_ladder,
     va_diode_ladder,

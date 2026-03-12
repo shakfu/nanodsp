@@ -11,14 +11,8 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import (
-    overdrive,
-    wavefold,
-    bitcrush,
-    decimator,
-    saturate,
-    fold,
-)
+from nanodsp.effects.daisysp import overdrive, wavefold, bitcrush, decimator, fold
+from nanodsp.effects.saturation import saturate
 
 
 def peak_normalize(buf: AudioBuffer) -> AudioBuffer:

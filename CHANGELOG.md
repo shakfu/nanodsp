@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: `effects` module split into subpackage** -- the monolithic `effects.py` (68KB) is now `effects/` with 6 public submodules:
+  - `nanodsp.effects.filters` -- signalsmith biquads, DaisySP SVF/ladder/moog/tone/modal/comb, virtual analog (Faust), IIR (DspFilters)
+  - `nanodsp.effects.daisysp` -- autowah, chorus, decimator, flanger, overdrive, phaser, pitch_shift, sample_rate_reduce, tremolo, wavefold, bitcrush, fold, reverb_sc, dc_block
+  - `nanodsp.effects.dynamics` -- compress, limit, noise_gate, agc
+  - `nanodsp.effects.saturation` -- saturate, aa_hard_clip, aa_soft_clip, aa_wavefold
+  - `nanodsp.effects.reverb` -- FDN reverb (with presets), schroeder_reverb, moorer_reverb, stk_reverb, stk_chorus, stk_echo
+  - `nanodsp.effects.composed` -- exciter, de_esser, parallel_compress, stereo_delay, multiband_compress, formant_filter, psola_pitch_shift, master, vocal_chain
+- **BREAKING: `effects/__init__.py` no longer re-exports** -- import from specific submodules (e.g. `from nanodsp.effects.filters import lowpass` instead of `from nanodsp.effects import lowpass`)
+- All effects submodules use relative imports internally
+- Updated all tests, demos, and CLI to use new submodule import paths
+
+### Fixed
+
+- **`ladder_filter` silent output** -- default `drive` was `0.0`, which zeroed the input signal before filtering (DaisySP's `drive` is an input multiplier). Changed default to `1.0` (unity gain)
+- **RingBuffer docstring** -- replaced misleading "lock-free-style" label with explicit thread safety warning (not safe for concurrent access without external synchronization)
+- **BlockProcessor docstring** -- added note about stateful DSP objects needing instantiation in `__init__` to avoid state loss between blocks
+
 ## [0.1.3]
 
 ### Added

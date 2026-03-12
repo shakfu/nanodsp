@@ -17,10 +17,18 @@ from nanodsp.buffer import AudioBuffer
 
 
 class RingBuffer:
-    """Lock-free-style ring buffer for streaming audio.
+    """Ring buffer for streaming audio.
 
     Stores planar float32 audio in a circular buffer with independent
     read and write positions.
+
+    .. warning::
+
+        This class is **not thread-safe**.  Concurrent reads and writes
+        from different threads can corrupt internal state.  If you need
+        to share a RingBuffer between a producer thread and a consumer
+        thread, protect every ``read``/``write``/``peek``/``clear`` call
+        with an external lock (e.g. ``threading.Lock``).
 
     Parameters
     ----------
@@ -183,6 +191,16 @@ class BlockProcessor:
 
     Subclass and override :meth:`process_block` to implement custom
     processing.  Call :meth:`process` to run on an arbitrary-length buffer.
+
+    .. note::
+
+        Each block is processed independently -- no state is carried
+        between successive blocks.  This means stateful DSP objects
+        (IIR filters, reverbs, compressors) that are instantiated inside
+        ``process_block`` will be re-created per block, losing their
+        internal memory.  To preserve state across blocks, instantiate
+        stateful objects in ``__init__`` and reuse them in
+        ``process_block``.
 
     Parameters
     ----------

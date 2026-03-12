@@ -11,15 +11,9 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import (
-    aa_hard_clip,
-    aa_soft_clip,
-    aa_wavefold,
-    schroeder_reverb,
-    moorer_reverb,
-    formant_filter,
-    psola_pitch_shift,
-)
+from nanodsp.effects.composed import formant_filter, psola_pitch_shift
+from nanodsp.effects.reverb import schroeder_reverb, moorer_reverb
+from nanodsp.effects.saturation import aa_hard_clip, aa_soft_clip, aa_wavefold
 from nanodsp.synthesis import minblep
 
 

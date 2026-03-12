@@ -10,7 +10,7 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import chorus, flanger, phaser, tremolo
+from nanodsp.effects.daisysp import chorus, flanger, phaser, tremolo
 
 
 def peak_normalize(buf: AudioBuffer) -> AudioBuffer:

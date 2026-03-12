@@ -10,7 +10,8 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import stereo_delay, stk_echo
+from nanodsp.effects.composed import stereo_delay
+from nanodsp.effects.reverb import stk_echo
 
 
 def peak_normalize(buf: AudioBuffer) -> AudioBuffer:

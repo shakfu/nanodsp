@@ -13,6 +13,10 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 | [HISSTools Library](https://github.com/AlexHarker/HISSTools_Library) | BSD-3 | Convolution, spectral processing, statistical analysis, windows |
 | [CHOC](https://github.com/Tracktion/choc) | ISC | FLAC codec (read/write) |
 | [GrainflowLib](https://github.com/composingcap/GrainflowLib) | MIT | Granular synthesis (grain collections, panning, recording, phasor) |
+| [fxdsp](https://github.com/hamiltonkibbe/FXDsp) | MIT | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators |
+| [DspFilters](https://github.com/vinniefalco/DSPFilters) | MIT | Multi-order IIR filter design (Butterworth, Chebyshev I/II, Elliptic, Bessel) |
+| [vafilters](https://github.com/music-dsp-collection/va-filters) | MIT | Virtual analog filters (Moog, Diode, Korg35, Oberheim) via Faust |
+| [PolyBLEP et al.](https://github.com/martinfinke/PolyBLEP) | MIT | Band-limited oscillators (PolyBLEP, BLIT, DPW, MinBLEP, wavetable) |
 
 ## Requirements
 
@@ -271,7 +275,7 @@ output, error = ops.lms_filter(buf, ref, filter_len=32, step_size=0.01)
 
 ### `nanodsp.effects` -- Filters, effects, dynamics, mastering
 
-53 functions covering signalsmith biquad filters, DaisySP effects/filters/dynamics, composed effects, reverbs, mastering chains, STK effects, and automatic gain control.
+70 functions covering signalsmith biquad filters, DaisySP effects/filters/dynamics, composed effects, reverbs, mastering chains, STK effects, automatic gain control, antialiased waveshaping, classic reverbs, formant filtering, PSOLA pitch shifting, and multi-order IIR filters.
 
 #### Biquad filters (signalsmith)
 
@@ -375,6 +379,40 @@ effects.stk_echo(buf, delay=0.25, max_delay=1.0, mix=0.5)
 effects.agc(buf, target_level=1.0, max_gain_db=60.0, average_len=100, attack=0.01, release=0.01)
 ```
 
+#### Antialiased waveshaping (fxdsp)
+
+```python
+effects.aa_hard_clip(buf, drive=2.0)       # 1st-order antiderivative hard clip
+effects.aa_soft_clip(buf, drive=2.0)       # 1st-order antiderivative soft clip
+effects.aa_wavefold(buf, drive=2.0)        # 2nd-order Buchla-style wavefolder
+```
+
+#### Classic reverbs (fxdsp)
+
+```python
+effects.schroeder_reverb(buf, feedback=0.7, diffusion=0.5, mod_depth=0.0)
+effects.moorer_reverb(buf, feedback=0.7, diffusion=0.7, mod_depth=0.1)
+```
+
+#### Formant filter and PSOLA pitch shifting (fxdsp)
+
+```python
+effects.formant_filter(buf, vowel="a")           # 'a','e','i','o','u'
+effects.psola_pitch_shift(buf, semitones=5.0)     # pitch-synchronous overlap-add
+```
+
+#### Multi-order IIR filters (DspFilters)
+
+```python
+effects.iir_filter(buf, family="butterworth", filter_type="lowpass", order=4, freq=1000.0)
+effects.iir_filter(buf, family="chebyshev1", filter_type="highpass", order=6, freq=200.0, ripple_db=1.0)
+effects.iir_filter(buf, family="elliptic", filter_type="bandpass", order=4, freq=1000.0, width=500.0)
+effects.iir_filter(buf, family="bessel", filter_type="lowpass", order=8, freq=5000.0)
+
+# Return SOS coefficients without applying
+sos = effects.iir_design("butterworth", "lowpass", order=4, sample_rate=44100, freq=1000.0)
+```
+
 ### `nanodsp.spectral` -- STFT and spectral processing
 
 Short-time Fourier transform, spectral utilities, and spectral transforms.
@@ -446,6 +484,10 @@ synthesis.synth_sequence("flute", notes=[
     {"freq": 440.0, "amp": 0.8, "start": 0.0, "dur": 0.5},
     {"freq": 554.37, "amp": 0.7, "start": 0.5, "dur": 0.5},
 ])
+
+# MinBLEP oscillators (fxdsp)
+synthesis.minblep(frames=44100, freq=440.0, waveform="saw")     # saw, rsaw, square, triangle
+synthesis.minblep(frames=44100, freq=440.0, waveform="square", pulse_width=0.3)
 ```
 
 Available STK instruments: `clarinet`, `flute`, `brass`, `bowed`, `plucked`, `sitar`, `stifkarp`, `saxofony`, `recorder`, `blowbotl`, `blowhole`, `whistle`.
@@ -552,7 +594,7 @@ stereo = panner.process(grain_output, result[1], out_channels=2)  # [2, block_si
 
 ### `nanodsp._core` -- C++ bindings (low-level)
 
-Direct access to the C++ extension module with 13 submodules. All high-level Python modules build on these.
+Direct access to the C++ extension module with 17 submodules. All high-level Python modules build on these.
 
 | Submodule | Backend | Contents |
 |-----------|---------|----------|
@@ -569,9 +611,13 @@ Direct access to the C++ extension module with 13 submodules. All high-level Pyt
 | `hisstools` | HISSTools | Convolution (mono/multi), spectral processing, 24 statistics functions, 28 window functions, partial tracking |
 | `choc` | CHOC | FLAC read/write |
 | `grainflow` | GrainflowLib | `GfBuffer`, `GrainCollection`, `Panner`, `Recorder`, `Phasor`, 37 enum constants |
+| `vafilters` | vafilters (Faust) | 6 virtual analog filters (Moog ladder, Diode ladder, Korg35 LP/HP, Oberheim multi-mode) |
+| `bloscillators` | PolyBLEP et al. | 5 band-limited oscillator algorithms (PolyBLEP, BLIT, DPW, MinBLEP, wavetable) |
+| `fxdsp` | fxdsp | Antialiased clippers/wavefolder, Schroeder/Moorer reverbs, formant filter, PSOLA, MinBLEP oscillator |
+| `iirdesign` | DspFilters | Multi-order IIR filter design (Butterworth, Chebyshev I/II, Elliptic, Bessel, orders 1-16) |
 
 ```python
-from nanodsp._core import filters, fft, delay, daisysp, stk, madronalib, hisstools, grainflow
+from nanodsp._core import filters, fft, delay, daisysp, stk, madronalib, hisstools, grainflow, vafilters, bloscillators, fxdsp, iirdesign
 
 # Example: direct biquad usage
 bq = filters.Biquad()
@@ -613,7 +659,7 @@ nanodsp/
 
 ## Demos
 
-16 demo scripts in `demos/` showcase the full API surface. Run them all at once:
+18 demo scripts in `demos/` showcase the full API surface. Run them all at once:
 
 ```bash
 make demos                              # uses demos/s01.wav
@@ -648,6 +694,8 @@ uv run python demos/demo_analysis.py demos/s01.wav   # prints to stdout
 | `demo_synthesis.py` | 44 | Oscillators, FM, noise, drums, physical modeling, STK instruments (no input file) |
 | `demo_analysis.py` | -- | Loudness, spectral features, pitch, onsets, chromagram (stdout only) |
 | `demo_grainflow.py` | 7 | Granular clouds (basic, dense), pitch shift, sparse stochastic, stereo panning, recorder |
+| `demo_fxdsp.py` | 28 | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators |
+| `demo_iir_filters.py` | 23 | Butterworth, Chebyshev I/II, Elliptic, Bessel filters at various orders |
 
 File-processing scripts share the same interface:
 
@@ -668,8 +716,8 @@ options:
 
 ```bash
 make build    # rebuild extension after C++ changes
-make test     # run 1163 tests
-make demos    # run all 16 demo scripts
+make test     # run 1431 tests
+make demos    # run all 18 demo scripts
 make qa       # test + lint + typecheck + format
 make coverage # tests with coverage report
 ```

@@ -469,10 +469,10 @@ class TestPipe:
         npt.assert_allclose(result.data, buf.data, rtol=1e-5)
 
     def test_integration_with_dsp_functions(self):
-        from nanodsp import effects
+        from nanodsp.effects.filters import lowpass
 
         buf = AudioBuffer.sine(1000.0, frames=4096, sample_rate=48000.0)
-        result = buf.pipe(effects.lowpass, 5000.0)
+        result = buf.pipe(lowpass, 5000.0)
         assert isinstance(result, AudioBuffer)
         assert result.frames == 4096
 

@@ -11,7 +11,7 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import pitch_shift
+from nanodsp.effects.daisysp import pitch_shift
 from nanodsp.spectral import pitch_shift_spectral
 
 

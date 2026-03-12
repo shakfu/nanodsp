@@ -11,13 +11,8 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import (
-    compress,
-    limit,
-    noise_gate,
-    parallel_compress,
-    multiband_compress,
-)
+from nanodsp.effects.composed import parallel_compress, multiband_compress
+from nanodsp.effects.dynamics import compress, limit, noise_gate
 
 
 def peak_normalize(buf: AudioBuffer) -> AudioBuffer:

@@ -10,7 +10,7 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import lowpass, highpass
+from nanodsp.effects.filters import lowpass, highpass
 from nanodsp.spectral import (
     stft,
     istft,

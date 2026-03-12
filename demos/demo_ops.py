@@ -130,7 +130,7 @@ def main():
         print(f"  stereo-widen {label} -> {path}")
 
     # --- Crossfade (between original and filtered version) ---
-    from nanodsp.effects import lowpass
+    from nanodsp.effects.filters import lowpass
     filtered = lowpass(buf, 800.0)
     for x, label in [(0.25, "25pct"), (0.5, "50pct"), (0.75, "75pct")]:
         out = normalize(ops.crossfade(buf, filtered, x=x))

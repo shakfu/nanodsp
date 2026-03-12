@@ -11,16 +11,9 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import (
-    autowah,
-    sample_rate_reduce,
-    dc_block,
-    exciter,
-    de_esser,
-    vocal_chain,
-    master,
-    stk_chorus,
-)
+from nanodsp.effects.composed import exciter, de_esser, vocal_chain, master
+from nanodsp.effects.daisysp import autowah, sample_rate_reduce, dc_block
+from nanodsp.effects.reverb import stk_chorus
 
 
 def peak_normalize(buf: AudioBuffer) -> AudioBuffer:

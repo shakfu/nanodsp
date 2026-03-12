@@ -11,7 +11,7 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import (
+from nanodsp.effects.filters import (
     lowpass,
     highpass,
     bandpass,

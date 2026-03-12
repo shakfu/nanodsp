@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from nanodsp import spectral as sp, effects
+from nanodsp import spectral as sp
+from nanodsp.effects.filters import lowpass, highpass
 from nanodsp._core import fft
 from nanodsp.buffer import AudioBuffer
 
@@ -498,9 +499,9 @@ class TestEqMatch:
         """A dark source matched to a bright target should have more high-freq energy."""
         sr = 48000.0
         dark = AudioBuffer.noise(channels=1, frames=16384, sample_rate=sr, seed=0)
-        dark = effects.lowpass(dark, 2000.0)
+        dark = lowpass(dark, 2000.0)
         bright = AudioBuffer.noise(channels=1, frames=16384, sample_rate=sr, seed=1)
-        bright = effects.highpass(bright, 2000.0)
+        bright = highpass(bright, 2000.0)
 
         result = sp.eq_match(dark, bright, window_size=2048)
         # Compare spectral centroids

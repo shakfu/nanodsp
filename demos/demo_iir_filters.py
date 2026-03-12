@@ -12,7 +12,7 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects import iir_filter
+from nanodsp.effects.filters import iir_filter
 
 
 def peak_normalize(buf: AudioBuffer) -> AudioBuffer:
