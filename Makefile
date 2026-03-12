@@ -6,7 +6,7 @@
 
 .PHONY: all sync build rebuild test lint format typecheck qa clean \
         distclean wheel sdist dist check publish-test publish upgrade \
-        coverage coverage-html docs release help release demos
+        coverage coverage-html docs docs-serve release help release demos
 
 # Default target
 all: build
@@ -89,9 +89,13 @@ coverage-html:
 	@uv run pytest tests/ -v --cov=src/nanodsp --cov-report=html
 	@echo "Coverage report: htmlcov/index.html"
 
-# Build documentation (requires sphinx in dev dependencies)
+# Build documentation
 docs:
-	@uv run sphinx-build -b html docs/ docs/_build/html
+	@uv run mkdocs build
+
+# Serve documentation locally with live reload
+docs-serve:
+	@uv run mkdocs serve
 
 # Run all demo scripts (output to build/demo-output/)
 DEMO_INPUT ?= demos/s01.wav
@@ -152,7 +156,8 @@ help:
 	@echo "  upgrade      - Upgrade all dependencies"
 	@echo "  coverage     - Run tests with coverage"
 	@echo "  coverage-html- Generate HTML coverage report"
-	@echo "  docs         - Build documentation with Sphinx"
+	@echo "  docs         - Build documentation with MkDocs"
+	@echo "  docs-serve   - Serve docs locally with live reload"
 	@echo "  release      - Bump version, tag, and prepare release"
 	@echo "  demos        - Run all demo scripts (DEMO_INPUT=demos/s01.wav)"
 	@echo "  clean        - Remove build artifacts"

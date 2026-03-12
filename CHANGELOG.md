@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4]
+
 ### Changed
 
 - **BREAKING: `effects` module split into subpackage** -- the monolithic `effects.py` (68KB) is now `effects/` with 6 public submodules:
@@ -17,8 +19,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nanodsp.effects.reverb` -- FDN reverb (with presets), schroeder_reverb, moorer_reverb, stk_reverb, stk_chorus, stk_echo
   - `nanodsp.effects.composed` -- exciter, de_esser, parallel_compress, stereo_delay, multiband_compress, formant_filter, psola_pitch_shift, master, vocal_chain
 - **BREAKING: `effects/__init__.py` no longer re-exports** -- import from specific submodules (e.g. `from nanodsp.effects.filters import lowpass` instead of `from nanodsp.effects import lowpass`)
+- **BREAKING: Biquad filter `design` parameter now accepts strings** -- `lowpass(buf, 1000, design="bilinear")` instead of `design=filters.BiquadDesign.bilinear`. Raw enum/int values still accepted for backward compatibility. Valid strings: `"bilinear"`, `"cookbook"`, `"one_sided"`, `"vicanek"`
 - All effects submodules use relative imports internally
 - Updated all tests, demos, and CLI to use new submodule import paths
+- **`io.py` deduplication** -- extracted shared WAV sample decode/encode logic into `_decode_wav_frames` and `_encode_wav_frames`, eliminating ~60 lines of duplication between file and bytes I/O variants
+- **Frequency validation for DaisySP/VA filters** -- SVF, ladder, moog, tone, modal, comb, and all VA filter functions now validate frequency against Nyquist at function entry, matching the behavior of signalsmith biquad wrappers
+- **Improved error messages** -- frequency validation errors now include `sample_rate`; WAV I/O errors include the file path; channel index errors include the valid range; `concat_channels` sample rate errors include both rates
+- **C++ uint8_t bounds checks** -- 6 DaisySP binding locations now validate parameter ranges before casting to `uint8_t`, raising `IndexError` with descriptive messages instead of silently truncating:
+  - `Oscillator.set_waveform`: 0-7
+  - `BlOsc.set_waveform`: 0-3
+  - `Decimator.set_bits_to_crush`: 1-32
+  - `CrossFade.set_curve`: 0-3
+  - `AdEnv.set_time` segment: 0-2
+  - `Adsr.set_time` segment: 0-3
+- **Thirdparty version documentation** -- added `thirdparty/VERSIONS.md` documenting version, license, and upstream URL for all 10 C++ dependencies
+- **NumPy-style docstrings** -- added comprehensive docstrings to ~50 public functions across `ops.py`, `synthesis.py`, `analysis.py`, `stream.py`, and `spectral.py`
+- **CLI bool coercion** -- added `"on"` to truthy values in CLI parameter parsing (joins `"true"`, `"yes"`, `"1"`)
+- **Configurable STFT window type** -- `stft` and `istft` now accept a `window` parameter (`"hann"`, `"hamming"`, `"blackman"`, `"bartlett"`, `"rectangular"`)
+- **Test parametrization** -- consolidated 13 biquad filter type tests into a single parametrized test in `test_filters.py`; consolidated oscillator, noise, drum, physical modeling, and instrument tests in `test_synthesis.py`
+- **Performance guidance** -- added Performance Guidance section to README.md covering buffer sizing, channel layouts, C++ vs Python paths, and GIL release behavior
 
 ### Fixed
 

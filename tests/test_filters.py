@@ -1,6 +1,7 @@
 """Tests for nanodsp.filters module (signalsmith biquad filters)."""
 
 import numpy as np
+import pytest
 from nanodsp._core import filters
 
 
@@ -35,84 +36,46 @@ class TestBiquadConstruction:
 class TestBiquadFilterTypes:
     """Verify each filter type can be configured and processes without error."""
 
-    def test_lowpass(self):
+    @pytest.mark.parametrize(
+        "filter_method, args, check_dtype",
+        [
+            ("lowpass", (0.1,), True),
+            ("lowpass_q", (0.1, 0.707), False),
+            ("highpass", (0.1,), False),
+            ("bandpass", (0.25,), False),
+            ("notch", (0.25,), False),
+            ("peak", (0.25, 2.0), False),
+            ("peak_db", (0.25, 6.0), False),
+            ("high_shelf", (0.25, 2.0), False),
+            ("high_shelf_db", (0.25, 6.0), False),
+            ("low_shelf", (0.25, 2.0), False),
+            ("low_shelf_db", (0.25, 6.0), False),
+            ("allpass", (0.25,), False),
+            ("allpass_q", (0.25, 1.0), False),
+        ],
+        ids=[
+            "lowpass",
+            "lowpass_q",
+            "highpass",
+            "bandpass",
+            "notch",
+            "peak",
+            "peak_db",
+            "high_shelf",
+            "high_shelf_db",
+            "low_shelf",
+            "low_shelf_db",
+            "allpass",
+            "allpass_q",
+        ],
+    )
+    def test_filter_type(self, filter_method, args, check_dtype):
         bq = filters.Biquad()
-        bq.lowpass(0.1)
+        getattr(bq, filter_method)(*args)
         out = bq.process(make_impulse())
         assert out.shape == (1024,)
-        assert out.dtype == np.float32
-
-    def test_lowpass_q(self):
-        bq = filters.Biquad()
-        bq.lowpass_q(0.1, 0.707)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_highpass(self):
-        bq = filters.Biquad()
-        bq.highpass(0.1)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_bandpass(self):
-        bq = filters.Biquad()
-        bq.bandpass(0.25)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_notch(self):
-        bq = filters.Biquad()
-        bq.notch(0.25)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_peak(self):
-        bq = filters.Biquad()
-        bq.peak(0.25, 2.0)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_peak_db(self):
-        bq = filters.Biquad()
-        bq.peak_db(0.25, 6.0)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_high_shelf(self):
-        bq = filters.Biquad()
-        bq.high_shelf(0.25, 2.0)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_high_shelf_db(self):
-        bq = filters.Biquad()
-        bq.high_shelf_db(0.25, 6.0)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_low_shelf(self):
-        bq = filters.Biquad()
-        bq.low_shelf(0.25, 2.0)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_low_shelf_db(self):
-        bq = filters.Biquad()
-        bq.low_shelf_db(0.25, 6.0)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_allpass(self):
-        bq = filters.Biquad()
-        bq.allpass(0.25)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
-
-    def test_allpass_q(self):
-        bq = filters.Biquad()
-        bq.allpass_q(0.25, 1.0)
-        out = bq.process(make_impulse())
-        assert out.shape == (1024,)
+        if check_dtype:
+            assert out.dtype == np.float32
 
 
 class TestBiquadBehavior:

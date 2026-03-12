@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
@@ -14,10 +16,21 @@ from nanodsp._core import fft
 # ---------------------------------------------------------------------------
 
 
+_WINDOW_FUNCTIONS: dict[str, Callable] = {
+    "hann": np.hanning,
+    "hamming": np.hamming,
+    "blackman": np.blackman,
+    "bartlett": np.bartlett,
+    "ones": np.ones,
+    "rectangular": np.ones,
+}
+
+
 def stft(
     buf: AudioBuffer,
     window_size: int = 2048,
     hop_size: int | None = None,
+    window: str = "hann",
 ) -> Spectrogram:
     """Short-time Fourier transform using windowed RealFFT + overlap.
 
@@ -29,6 +42,9 @@ def stft(
         Analysis window length in samples.
     hop_size : int or None
         Hop between successive windows.  Defaults to ``window_size // 4``.
+    window : str
+        Window function name. One of ``"hann"`` (default), ``"hamming"``,
+        ``"blackman"``, ``"bartlett"``, ``"rectangular"``/``"ones"``.
 
     Returns
     -------
@@ -42,7 +58,12 @@ def stft(
     rfft_obj = fft.RealFFT(fft_size)
     bins = fft_size // 2
 
-    window = np.hanning(window_size).astype(np.float32)
+    win_fn = _WINDOW_FUNCTIONS.get(window.lower())
+    if win_fn is None:
+        raise ValueError(
+            f"Unknown window {window!r}, valid: {list(_WINDOW_FUNCTIONS.keys())}"
+        )
+    win = win_fn(window_size).astype(np.float32)
 
     n_frames = buf.frames
     num_stft_frames = max(0, (n_frames - window_size) // hop_size + 1)
@@ -53,7 +74,7 @@ def stft(
         channel_data = buf.ensure_1d(ch)
         for t in range(num_stft_frames):
             start = t * hop_size
-            segment = channel_data[start : start + window_size] * window
+            segment = channel_data[start : start + window_size] * win
             if window_size < fft_size:
                 padded = np.zeros(fft_size, dtype=np.float32)
                 padded[:window_size] = segment
@@ -70,13 +91,15 @@ def stft(
     )
 
 
-def istft(spec: Spectrogram) -> AudioBuffer:
+def istft(spec: Spectrogram, window: str = "hann") -> AudioBuffer:
     """Inverse STFT via overlap-add with COLA normalization.
 
     Parameters
     ----------
     spec : Spectrogram
         Output from :func:`stft`.
+    window : str
+        Window function name (must match the window used in :func:`stft`).
 
     Returns
     -------
@@ -88,7 +111,12 @@ def istft(spec: Spectrogram) -> AudioBuffer:
     fft_size = spec.fft_size
 
     rfft_obj = fft.RealFFT(fft_size)
-    window = np.hanning(window_size).astype(np.float32)
+    win_fn = _WINDOW_FUNCTIONS.get(window.lower())
+    if win_fn is None:
+        raise ValueError(
+            f"Unknown window {window!r}, valid: {list(_WINDOW_FUNCTIONS.keys())}"
+        )
+    win = win_fn(window_size).astype(np.float32)
 
     out_len = (spec.num_frames - 1) * hop_size + window_size
     out = np.zeros((spec.channels, out_len), dtype=np.float32)
@@ -98,16 +126,14 @@ def istft(spec: Spectrogram) -> AudioBuffer:
         for t in range(spec.num_frames):
             full = rfft_obj.ifft(np.ascontiguousarray(spec.data[ch, t, :]))
             # ifft is unscaled -- divide by fft_size
-            frame = (
-                np.asarray(full[:window_size], dtype=np.float32) / fft_size
-            ) * window
+            frame = (np.asarray(full[:window_size], dtype=np.float32) / fft_size) * win
             start = t * hop_size
             out[ch, start : start + window_size] += frame
 
     # Window normalization (sum of squared windows at each position)
     for t in range(spec.num_frames):
         start = t * hop_size
-        win_sum[start : start + window_size] += window**2
+        win_sum[start : start + window_size] += win**2
 
     # Avoid division by zero at edges
     win_sum = np.maximum(win_sum, 1e-8)

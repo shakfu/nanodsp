@@ -15,6 +15,67 @@ import numpy as np
 from nanodsp.buffer import AudioBuffer
 
 
+def _decode_wav_frames(
+    raw_bytes: bytes,
+    sampwidth: int,
+    n_channels: int,
+    n_frames: int,
+    sample_rate: int,
+    source: str = "<bytes>",
+) -> AudioBuffer:
+    """Decode raw WAV sample bytes into an AudioBuffer."""
+    total_samples = n_frames * n_channels
+
+    if sampwidth == 1:
+        samples = np.frombuffer(raw_bytes, dtype=np.uint8).astype(np.float32)
+        samples = (samples - 128.0) / 128.0
+    elif sampwidth == 2:
+        samples = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32)
+        samples = samples / 32768.0
+    elif sampwidth == 3:
+        raw = np.frombuffer(raw_bytes, dtype=np.uint8).reshape(-1, 3)
+        padded = np.zeros((len(raw), 4), dtype=np.uint8)
+        padded[:, 0:3] = raw
+        padded[:, 3] = np.where(raw[:, 2] & 0x80, 0xFF, 0x00)
+        samples = padded.view(np.int32).flatten().astype(np.float32)
+        samples = samples / 8388608.0
+    elif sampwidth == 4:
+        samples = np.frombuffer(raw_bytes, dtype=np.int32).astype(np.float32)
+        samples = samples / 2147483648.0
+    else:
+        raise ValueError(f"Unsupported sample width: {sampwidth} bytes in {source}")
+
+    if len(samples) != total_samples:
+        raise ValueError(
+            f"Expected {total_samples} samples, got {len(samples)} in {source}"
+        )
+
+    if n_channels == 1:
+        data = samples.reshape(1, -1)
+    else:
+        data = samples.reshape(-1, n_channels).T
+
+    data = np.ascontiguousarray(data, dtype=np.float32)
+    return AudioBuffer(data, sample_rate=float(sample_rate))
+
+
+def _encode_wav_frames(buf: AudioBuffer, bit_depth: int) -> bytes:
+    """Encode an AudioBuffer into raw WAV sample bytes."""
+    data = buf.data.copy()
+    np.clip(data, -1.0, 1.0, out=data)
+    interleaved = data.T.flatten()
+
+    if bit_depth == 16:
+        scaled = (interleaved * 32767.0).astype(np.int16)
+        return scaled.tobytes()
+    else:  # 24
+        scaled = np.clip(interleaved * 8388607.0, -8388608.0, 8388607.0).astype(
+            np.int32
+        )
+        bytes_4 = scaled.view(np.uint8).reshape(-1, 4)
+        return bytes_4[:, :3].tobytes()
+
+
 def read_wav(path: str | Path) -> AudioBuffer:
     """Read a WAV file and return an AudioBuffer.
 
@@ -22,51 +83,19 @@ def read_wav(path: str | Path) -> AudioBuffer:
     Output is float32 normalized to [-1, 1].
     """
     path = Path(path)
-    with wave.open(str(path), "rb") as wf:
-        n_channels = wf.getnchannels()
-        sampwidth = wf.getsampwidth()
-        sample_rate = wf.getframerate()
-        n_frames = wf.getnframes()
-        raw_bytes = wf.readframes(n_frames)
+    try:
+        with wave.open(str(path), "rb") as wf:
+            n_channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            sample_rate = wf.getframerate()
+            n_frames = wf.getnframes()
+            raw_bytes = wf.readframes(n_frames)
+    except wave.Error as e:
+        raise wave.Error(f"{e} (file: '{path}')") from e
 
-    total_samples = n_frames * n_channels
-
-    if sampwidth == 1:
-        # 8-bit unsigned
-        samples = np.frombuffer(raw_bytes, dtype=np.uint8).astype(np.float32)
-        samples = (samples - 128.0) / 128.0
-    elif sampwidth == 2:
-        # 16-bit signed
-        samples = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32)
-        samples = samples / 32768.0
-    elif sampwidth == 3:
-        # 24-bit signed -- vectorized approach
-        raw = np.frombuffer(raw_bytes, dtype=np.uint8).reshape(-1, 3)
-        padded = np.zeros((len(raw), 4), dtype=np.uint8)
-        padded[:, 0:3] = raw
-        # Sign extend: if high bit of third byte is set, fill fourth byte
-        padded[:, 3] = np.where(raw[:, 2] & 0x80, 0xFF, 0x00)
-        samples = padded.view(np.int32).flatten().astype(np.float32)
-        samples = samples / 8388608.0
-    elif sampwidth == 4:
-        # 32-bit signed
-        samples = np.frombuffer(raw_bytes, dtype=np.int32).astype(np.float32)
-        samples = samples / 2147483648.0
-    else:
-        raise ValueError(f"Unsupported sample width: {sampwidth} bytes")
-
-    if len(samples) != total_samples:
-        raise ValueError(f"Expected {total_samples} samples, got {len(samples)}")
-
-    # Deinterleave to planar [channels, frames]
-    if n_channels == 1:
-        data = samples.reshape(1, -1)
-    else:
-        # Interleaved: [L0, R0, L1, R1, ...] -> [[L0, L1, ...], [R0, R1, ...]]
-        data = samples.reshape(-1, n_channels).T
-
-    data = np.ascontiguousarray(data, dtype=np.float32)
-    return AudioBuffer(data, sample_rate=float(sample_rate))
+    return _decode_wav_frames(
+        raw_bytes, sampwidth, n_channels, n_frames, sample_rate, source=f"'{path}'"
+    )
 
 
 def write_wav(
@@ -89,32 +118,12 @@ def write_wav(
         raise ValueError(f"Unsupported bit_depth: {bit_depth} (use 16 or 24)")
 
     path = Path(path)
-    n_channels = buf.channels
-    sample_rate = int(buf.sample_rate)
-    sampwidth = bit_depth // 8
-
-    # Interleave: [channels, frames] -> [frames, channels] -> flat
-    data = buf.data.copy()
-    # Clip to [-1, 1]
-    np.clip(data, -1.0, 1.0, out=data)
-
-    if bit_depth == 16:
-        interleaved = data.T.flatten()
-        scaled = (interleaved * 32767.0).astype(np.int16)
-        raw_bytes = scaled.tobytes()
-    elif bit_depth == 24:
-        interleaved = data.T.flatten()
-        scaled = np.clip(interleaved * 8388607.0, -8388608.0, 8388607.0).astype(
-            np.int32
-        )
-        # int32 -> view as uint8 -> take lower 3 bytes (little-endian)
-        bytes_4 = scaled.view(np.uint8).reshape(-1, 4)
-        raw_bytes = bytes_4[:, :3].tobytes()
+    raw_bytes = _encode_wav_frames(buf, bit_depth)
 
     with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(n_channels)
-        wf.setsampwidth(sampwidth)
-        wf.setframerate(sample_rate)
+        wf.setnchannels(buf.channels)
+        wf.setsampwidth(bit_depth // 8)
+        wf.setframerate(int(buf.sample_rate))
         wf.writeframes(raw_bytes)
 
 
@@ -133,37 +142,7 @@ def read_wav_bytes(data: bytes) -> AudioBuffer:
         n_frames = wf.getnframes()
         raw_bytes = wf.readframes(n_frames)
 
-    total_samples = n_frames * n_channels
-
-    if sampwidth == 1:
-        samples = np.frombuffer(raw_bytes, dtype=np.uint8).astype(np.float32)
-        samples = (samples - 128.0) / 128.0
-    elif sampwidth == 2:
-        samples = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32)
-        samples = samples / 32768.0
-    elif sampwidth == 3:
-        raw = np.frombuffer(raw_bytes, dtype=np.uint8).reshape(-1, 3)
-        padded = np.zeros((len(raw), 4), dtype=np.uint8)
-        padded[:, 0:3] = raw
-        padded[:, 3] = np.where(raw[:, 2] & 0x80, 0xFF, 0x00)
-        samples = padded.view(np.int32).flatten().astype(np.float32)
-        samples = samples / 8388608.0
-    elif sampwidth == 4:
-        samples = np.frombuffer(raw_bytes, dtype=np.int32).astype(np.float32)
-        samples = samples / 2147483648.0
-    else:
-        raise ValueError(f"Unsupported sample width: {sampwidth} bytes")
-
-    if len(samples) != total_samples:
-        raise ValueError(f"Expected {total_samples} samples, got {len(samples)}")
-
-    if n_channels == 1:
-        arr = samples.reshape(1, -1)
-    else:
-        arr = samples.reshape(-1, n_channels).T
-
-    arr = np.ascontiguousarray(arr, dtype=np.float32)
-    return AudioBuffer(arr, sample_rate=float(sample_rate))
+    return _decode_wav_frames(raw_bytes, sampwidth, n_channels, n_frames, sample_rate)
 
 
 def write_wav_bytes(buf: AudioBuffer, bit_depth: int = 16) -> bytes:
@@ -186,30 +165,13 @@ def write_wav_bytes(buf: AudioBuffer, bit_depth: int = 16) -> bytes:
     if bit_depth not in (16, 24):
         raise ValueError(f"Unsupported bit_depth: {bit_depth} (use 16 or 24)")
 
-    n_channels = buf.channels
-    sample_rate = int(buf.sample_rate)
-    sampwidth = bit_depth // 8
-
-    data = buf.data.copy()
-    np.clip(data, -1.0, 1.0, out=data)
-
-    if bit_depth == 16:
-        interleaved = data.T.flatten()
-        scaled = (interleaved * 32767.0).astype(np.int16)
-        raw_bytes = scaled.tobytes()
-    elif bit_depth == 24:
-        interleaved = data.T.flatten()
-        scaled = np.clip(interleaved * 8388607.0, -8388608.0, 8388607.0).astype(
-            np.int32
-        )
-        bytes_4 = scaled.view(np.uint8).reshape(-1, 4)
-        raw_bytes = bytes_4[:, :3].tobytes()
+    raw_bytes = _encode_wav_frames(buf, bit_depth)
 
     bio = _io.BytesIO()
     with wave.open(bio, "wb") as wf:
-        wf.setnchannels(n_channels)
-        wf.setsampwidth(sampwidth)
-        wf.setframerate(sample_rate)
+        wf.setnchannels(buf.channels)
+        wf.setsampwidth(bit_depth // 8)
+        wf.setframerate(int(buf.sample_rate))
         wf.writeframes(raw_bytes)
 
     return bio.getvalue()

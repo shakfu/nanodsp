@@ -21,7 +21,24 @@ def delay(
     capacity: int | None = None,
     interpolation: str = "linear",
 ) -> AudioBuffer:
-    """Apply a fixed delay (in samples) per channel."""
+    """Apply a fixed delay (in samples) per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    delay_samples : float
+        Delay amount in samples (fractional for interpolated delay).
+    capacity : int or None
+        Delay line capacity. If None, auto-sized from delay_samples.
+    interpolation : str
+        Interpolation mode: 'linear' or 'cubic'.
+
+    Returns
+    -------
+    AudioBuffer
+        Delayed audio.
+    """
     cap = capacity if capacity is not None else int(delay_samples) + 64
 
     def _process(x):
@@ -43,8 +60,17 @@ def delay_varying(
 
     Parameters
     ----------
+    buf : AudioBuffer
+        Input audio.
     delays : ndarray
         1D (broadcast to all channels) or 2D [channels, frames].
+    interpolation : str
+        Interpolation mode: 'linear' or 'cubic'.
+
+    Returns
+    -------
+    AudioBuffer
+        Delayed audio.
     """
     delays = np.asarray(delays, dtype=np.float32)
     if delays.ndim == 1:
@@ -88,7 +114,20 @@ def delay_varying(
 
 
 def box_filter(buf: AudioBuffer, length: int) -> AudioBuffer:
-    """Apply a BoxFilter (moving average) per channel."""
+    """Apply a BoxFilter (moving average) per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    length : int
+        Window size in samples.
+
+    Returns
+    -------
+    AudioBuffer
+        Smoothed audio.
+    """
 
     def _process(x):
         bf = envelopes.BoxFilter(length)
@@ -99,7 +138,22 @@ def box_filter(buf: AudioBuffer, length: int) -> AudioBuffer:
 
 
 def box_stack_filter(buf: AudioBuffer, size: int, layers: int = 4) -> AudioBuffer:
-    """Apply a BoxStackFilter (stacked moving average) per channel."""
+    """Apply a BoxStackFilter (stacked moving average) per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    size : int
+        Window size in samples per layer.
+    layers : int
+        Number of stacked box filter layers.
+
+    Returns
+    -------
+    AudioBuffer
+        Smoothed audio.
+    """
 
     def _process(x):
         bs = envelopes.BoxStackFilter(size, layers)
@@ -110,7 +164,20 @@ def box_stack_filter(buf: AudioBuffer, size: int, layers: int = 4) -> AudioBuffe
 
 
 def peak_hold(buf: AudioBuffer, length: int) -> AudioBuffer:
-    """Apply PeakHold per channel."""
+    """Apply PeakHold per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    length : int
+        Hold window size in samples.
+
+    Returns
+    -------
+    AudioBuffer
+        Peak-held envelope.
+    """
 
     def _process(x):
         ph = envelopes.PeakHold(length)
@@ -121,7 +188,20 @@ def peak_hold(buf: AudioBuffer, length: int) -> AudioBuffer:
 
 
 def peak_decay(buf: AudioBuffer, length: int) -> AudioBuffer:
-    """Apply PeakDecayLinear per channel."""
+    """Apply PeakDecayLinear per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    length : int
+        Decay window size in samples.
+
+    Returns
+    -------
+    AudioBuffer
+        Peak-decayed envelope.
+    """
 
     def _process(x):
         pd = envelopes.PeakDecayLinear(length)
@@ -283,7 +363,24 @@ def upsample_2x(
     half_latency: int = 16,
     pass_freq: float = 0.43,
 ) -> AudioBuffer:
-    """Upsample by 2x. Returns AudioBuffer with 2x frames and 2x sample rate."""
+    """Upsample by 2x. Returns AudioBuffer with 2x frames and 2x sample rate.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    max_block : int or None
+        Maximum block size. If None, uses buf.frames.
+    half_latency : int
+        Half-band filter latency in samples.
+    pass_freq : float
+        Normalized passband edge frequency.
+
+    Returns
+    -------
+    AudioBuffer
+        Upsampled audio at 2x sample rate.
+    """
     block = max_block if max_block is not None else buf.frames
     os = rates.Oversampler2x(buf.channels, block, half_latency, pass_freq)
     upsampled = os.up(buf.data)
@@ -301,7 +398,24 @@ def oversample_roundtrip(
     half_latency: int = 16,
     pass_freq: float = 0.43,
 ) -> AudioBuffer:
-    """Upsample then downsample (roundtrip). Same shape and sample rate as input."""
+    """Upsample then downsample (roundtrip). Same shape and sample rate as input.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    max_block : int or None
+        Maximum block size. If None, uses buf.frames.
+    half_latency : int
+        Half-band filter latency in samples.
+    pass_freq : float
+        Normalized passband edge frequency.
+
+    Returns
+    -------
+    AudioBuffer
+        Roundtripped audio (same shape as input).
+    """
     block = max_block if max_block is not None else buf.frames
     os = rates.Oversampler2x(buf.channels, block, half_latency, pass_freq)
     processed = os.process(buf.data)
@@ -322,6 +436,16 @@ def hadamard(buf: AudioBuffer) -> AudioBuffer:
     """Apply Hadamard mixing across channels at each frame.
 
     Requires power-of-2 channel count.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio (must have power-of-2 channel count).
+
+    Returns
+    -------
+    AudioBuffer
+        Hadamard-mixed audio.
     """
     ch = buf.channels
     if ch == 0 or (ch & (ch - 1)) != 0:
@@ -340,7 +464,18 @@ def hadamard(buf: AudioBuffer) -> AudioBuffer:
 
 
 def householder(buf: AudioBuffer) -> AudioBuffer:
-    """Apply Householder reflection across channels at each frame."""
+    """Apply Householder reflection across channels at each frame.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+
+    Returns
+    -------
+    AudioBuffer
+        Householder-mixed audio.
+    """
     ch = buf.channels
     h = mix.Householder(ch)
     out = np.zeros_like(buf.data)
@@ -358,7 +493,19 @@ def householder(buf: AudioBuffer) -> AudioBuffer:
 def crossfade(buf_a: AudioBuffer, buf_b: AudioBuffer, x: float) -> AudioBuffer:
     """Crossfade between two buffers using cheap_energy_crossfade coefficients.
 
-    x=0 returns buf_a, x=1 returns buf_b.
+    Parameters
+    ----------
+    buf_a : AudioBuffer
+        First audio buffer (returned when x=0).
+    buf_b : AudioBuffer
+        Second audio buffer (returned when x=1).
+    x : float
+        Crossfade position (0.0 to 1.0).
+
+    Returns
+    -------
+    AudioBuffer
+        Crossfaded audio.
     """
     if buf_a.sample_rate != buf_b.sample_rate:
         raise ValueError(
@@ -432,7 +579,20 @@ def lfo(
 
 
 def normalize_peak(buf: AudioBuffer, target_db: float = 0.0) -> AudioBuffer:
-    """Normalize peak amplitude to *target_db* dBFS."""
+    """Normalize peak amplitude to *target_db* dBFS.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    target_db : float
+        Target peak level in dBFS.
+
+    Returns
+    -------
+    AudioBuffer
+        Peak-normalized audio.
+    """
     peak = np.max(np.abs(buf.data))
     if peak == 0.0:
         return buf.copy()
@@ -451,7 +611,22 @@ def trim_silence(
     threshold_db: float = -60.0,
     pad_frames: int = 0,
 ) -> AudioBuffer:
-    """Trim leading and trailing silence below *threshold_db*."""
+    """Trim leading and trailing silence below *threshold_db*.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    threshold_db : float
+        Silence threshold in dB.
+    pad_frames : int
+        Extra frames to keep around non-silent regions.
+
+    Returns
+    -------
+    AudioBuffer
+        Trimmed audio.
+    """
     threshold_linear = 10.0 ** (threshold_db / 20.0)
     # Max across channels at each frame
     frame_peaks = np.max(np.abs(buf.data), axis=0)
@@ -474,7 +649,22 @@ def fade_in(
     duration_ms: float = 10.0,
     curve: str = "linear",
 ) -> AudioBuffer:
-    """Apply a fade-in over *duration_ms* milliseconds."""
+    """Apply a fade-in over *duration_ms* milliseconds.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    duration_ms : float
+        Fade duration in milliseconds.
+    curve : str
+        Fade shape: 'linear', 'ease_in', 'ease_out', or 'smoothstep'.
+
+    Returns
+    -------
+    AudioBuffer
+        Audio with fade-in applied.
+    """
     n_samples = max(1, int(buf.sample_rate * duration_ms / 1000.0))
     n_samples = min(n_samples, buf.frames)
     ramp = np.linspace(0.0, 1.0, n_samples, dtype=np.float32)
@@ -494,7 +684,22 @@ def fade_out(
     duration_ms: float = 10.0,
     curve: str = "linear",
 ) -> AudioBuffer:
-    """Apply a fade-out over *duration_ms* milliseconds."""
+    """Apply a fade-out over *duration_ms* milliseconds.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    duration_ms : float
+        Fade duration in milliseconds.
+    curve : str
+        Fade shape: 'linear', 'ease_in', 'ease_out', or 'smoothstep'.
+
+    Returns
+    -------
+    AudioBuffer
+        Audio with fade-out applied.
+    """
     n_samples = max(1, int(buf.sample_rate * duration_ms / 1000.0))
     n_samples = min(n_samples, buf.frames)
     ramp = np.linspace(1.0, 0.0, n_samples, dtype=np.float32)
@@ -548,8 +753,19 @@ def _apply_fade_curve(
 def pan(buf: AudioBuffer, position: float = 0.0) -> AudioBuffer:
     """Pan a signal using equal-power panning.
 
-    *position*: -1.0 = hard left, 0.0 = center, 1.0 = hard right.
     Mono input produces stereo output. Stereo input scales L/R gains.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    position : float
+        Pan position: -1.0 = hard left, 0.0 = center, 1.0 = hard right.
+
+    Returns
+    -------
+    AudioBuffer
+        Panned audio (stereo if mono input).
     """
     theta = (position + 1.0) / 2.0 * (np.pi / 2.0)
     left_gain = np.float32(np.cos(theta))
@@ -584,6 +800,18 @@ def mix_buffers(*buffers: AudioBuffer, gains: list[float] | None = None) -> Audi
 
     All buffers must share the same sample_rate. Shorter buffers are
     zero-padded to the length of the longest.
+
+    Parameters
+    ----------
+    *buffers : AudioBuffer
+        Audio buffers to sum.
+    gains : list of float or None
+        Per-buffer gain multipliers. If None, all gains are 1.0.
+
+    Returns
+    -------
+    AudioBuffer
+        Summed audio.
     """
     if not buffers:
         raise ValueError("At least one buffer required")
@@ -621,6 +849,16 @@ def mid_side_encode(buf: AudioBuffer) -> AudioBuffer:
     """Encode stereo [L, R] to mid-side [M, S].
 
     M = (L + R) / 2, S = (L - R) / 2.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Stereo input audio.
+
+    Returns
+    -------
+    AudioBuffer
+        Mid-side encoded audio [M, S].
     """
     if buf.channels != 2:
         raise ValueError(
@@ -641,6 +879,16 @@ def mid_side_decode(buf: AudioBuffer) -> AudioBuffer:
     """Decode mid-side [M, S] back to stereo [L, R].
 
     L = M + S, R = M - S.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Mid-side input audio [M, S].
+
+    Returns
+    -------
+    AudioBuffer
+        Stereo audio [L, R].
     """
     if buf.channels != 2:
         raise ValueError(
@@ -867,7 +1115,17 @@ def lms_filter(
 def stereo_widen(buf: AudioBuffer, width: float = 1.5) -> AudioBuffer:
     """Adjust stereo width via mid-side processing.
 
-    *width*: 0.0 = mono, 1.0 = unchanged, >1.0 = wider.
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Stereo input audio.
+    width : float
+        Width factor: 0.0 = mono, 1.0 = unchanged, >1.0 = wider.
+
+    Returns
+    -------
+    AudioBuffer
+        Width-adjusted stereo audio.
     """
     if buf.channels != 2:
         raise ValueError(

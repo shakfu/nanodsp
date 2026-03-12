@@ -19,7 +19,24 @@ def autowah(
     dry_wet: float = 1.0,
     level: float = 0.5,
 ) -> AudioBuffer:
-    """Apply auto-wah effect per channel."""
+    """Apply auto-wah effect per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    wah : float
+        Wah amount (0.0 to 1.0).
+    dry_wet : float
+        Dry/wet mix (0.0 = dry, 1.0 = wet).
+    level : float
+        Output level (0.0 to 1.0).
+
+    Returns
+    -------
+    AudioBuffer
+        Processed audio.
+    """
 
     def _process(x):
         aw = _dsy_fx.Autowah()
@@ -43,6 +60,24 @@ def chorus(
 
     Mono input produces stereo output via process_stereo.
     Multi-channel input is processed per-channel (mono chorus).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    lfo_freq : float
+        LFO rate in Hz.
+    lfo_depth : float
+        LFO modulation depth (0.0 to 1.0).
+    delay_ms : float
+        Base delay time in milliseconds.
+    feedback : float
+        Feedback amount (0.0 to 1.0).
+
+    Returns
+    -------
+    AudioBuffer
+        Processed audio (stereo if mono input).
     """
     if buf.channels == 1:
         ch = _dsy_fx.Chorus()
@@ -78,7 +113,26 @@ def decimator(
     bits_to_crush: int = 8,
     smooth: bool = False,
 ) -> AudioBuffer:
-    """Apply decimator (bitcrushing / downsampling) per channel."""
+    """Apply decimator (bitcrushing / downsampling) per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    downsample_factor : float
+        Downsampling amount (0.0 to 1.0).
+    bitcrush_factor : float
+        Bit reduction amount (0.0 to 1.0).
+    bits_to_crush : int
+        Number of bits to quantize to.
+    smooth : bool
+        If True, apply smoothing to crushed output.
+
+    Returns
+    -------
+    AudioBuffer
+        Decimated audio.
+    """
 
     def _process(x):
         d = _dsy_fx.Decimator()
@@ -99,7 +153,26 @@ def flanger(
     feedback: float = 0.3,
     delay_ms: float = 1.0,
 ) -> AudioBuffer:
-    """Apply flanger effect per channel."""
+    """Apply flanger effect per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    lfo_freq : float
+        LFO rate in Hz.
+    lfo_depth : float
+        LFO modulation depth (0.0 to 1.0).
+    feedback : float
+        Feedback amount (0.0 to 1.0).
+    delay_ms : float
+        Base delay time in milliseconds.
+
+    Returns
+    -------
+    AudioBuffer
+        Flanged audio.
+    """
 
     def _process(x):
         f = _dsy_fx.Flanger()
@@ -114,7 +187,20 @@ def flanger(
 
 
 def overdrive(buf: AudioBuffer, drive: float = 0.5) -> AudioBuffer:
-    """Apply overdrive distortion per channel."""
+    """Apply overdrive distortion per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    drive : float
+        Drive amount (0.0 to 1.0).
+
+    Returns
+    -------
+    AudioBuffer
+        Overdriven audio.
+    """
 
     def _process(x):
         od = _dsy_fx.Overdrive()
@@ -133,7 +219,28 @@ def phaser(
     feedback: float = 0.5,
     poles: int = 4,
 ) -> AudioBuffer:
-    """Apply phaser effect per channel."""
+    """Apply phaser effect per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    lfo_freq : float
+        LFO rate in Hz.
+    lfo_depth : float
+        LFO modulation depth (0.0 to 1.0).
+    freq : float
+        Base allpass frequency in Hz.
+    feedback : float
+        Feedback amount (0.0 to 1.0).
+    poles : int
+        Number of allpass stages.
+
+    Returns
+    -------
+    AudioBuffer
+        Phased audio.
+    """
 
     def _process(x):
         p = _dsy_fx.Phaser()
@@ -154,7 +261,24 @@ def pitch_shift(
     del_size: int = 256,
     fun: float = 0.0,
 ) -> AudioBuffer:
-    """Apply pitch shifting per channel."""
+    """Apply pitch shifting per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    semitones : float
+        Pitch shift in semitones.
+    del_size : int
+        Internal delay buffer size.
+    fun : float
+        Fun parameter (spectral smearing, 0.0 to 1.0).
+
+    Returns
+    -------
+    AudioBuffer
+        Pitch-shifted audio.
+    """
 
     def _process(x):
         ps = _dsy_fx.PitchShifter()
@@ -172,8 +296,15 @@ def sample_rate_reduce(buf: AudioBuffer, freq: float = 0.5) -> AudioBuffer:
 
     Parameters
     ----------
+    buf : AudioBuffer
+        Input audio.
     freq : float
         Normalized frequency 0-1 controlling the reduction amount.
+
+    Returns
+    -------
+    AudioBuffer
+        Sample-rate-reduced audio.
     """
 
     def _process(x):
@@ -191,7 +322,24 @@ def tremolo(
     depth: float = 0.5,
     waveform: int = 0,
 ) -> AudioBuffer:
-    """Apply tremolo effect per channel."""
+    """Apply tremolo effect per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq : float
+        Tremolo rate in Hz.
+    depth : float
+        Modulation depth (0.0 to 1.0).
+    waveform : int
+        LFO waveform index.
+
+    Returns
+    -------
+    AudioBuffer
+        Tremolo-modulated audio.
+    """
 
     def _process(x):
         t = _dsy_fx.Tremolo()
@@ -209,7 +357,22 @@ def wavefold(
     gain: float = 1.0,
     offset: float = 0.0,
 ) -> AudioBuffer:
-    """Apply wavefolding per channel."""
+    """Apply wavefolding per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    gain : float
+        Input gain before folding.
+    offset : float
+        DC offset applied before folding.
+
+    Returns
+    -------
+    AudioBuffer
+        Wavefolded audio.
+    """
 
     def _process(x):
         wf = _dsy_fx.Wavefolder()
@@ -230,8 +393,17 @@ def bitcrush(
 
     Parameters
     ----------
+    buf : AudioBuffer
+        Input audio.
+    bit_depth : int
+        Number of bits for quantization.
     crush_rate : float or None
         Sample-and-hold rate. Defaults to sample_rate / 4 if None.
+
+    Returns
+    -------
+    AudioBuffer
+        Bitcrushed audio.
     """
     rate = crush_rate if crush_rate is not None else buf.sample_rate / 4.0
 
@@ -246,7 +418,20 @@ def bitcrush(
 
 
 def fold(buf: AudioBuffer, increment: float = 1.0) -> AudioBuffer:
-    """Apply fold distortion per channel."""
+    """Apply fold distortion per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    increment : float
+        Fold increment amount.
+
+    Returns
+    -------
+    AudioBuffer
+        Folded audio.
+    """
 
     def _process(x):
         f = _dsy_fx.Fold()
@@ -266,6 +451,20 @@ def reverb_sc(
 
     Mono input is duplicated to stereo. Stereo input is passed through.
     3+ channels raises ValueError.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio (mono or stereo).
+    feedback : float
+        Reverb feedback / decay (0.0 to 1.0).
+    lp_freq : float
+        Lowpass filter frequency in Hz for damping.
+
+    Returns
+    -------
+    AudioBuffer
+        Stereo reverb output.
     """
     if buf.channels > 2:
         raise ValueError(
@@ -289,7 +488,18 @@ def reverb_sc(
 
 
 def dc_block(buf: AudioBuffer) -> AudioBuffer:
-    """Remove DC offset per channel using DaisySP DcBlock."""
+    """Remove DC offset per channel using DaisySP DcBlock.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+
+    Returns
+    -------
+    AudioBuffer
+        Audio with DC offset removed.
+    """
 
     def _process(x):
         dc = _dsy_util.DcBlock()

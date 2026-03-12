@@ -1,6 +1,6 @@
 [project]
 name = "nanodsp"
-version = "0.1.3"
+version = "0.1.4"
 description = "High-performance Python DSP toolkit built on C++ libraries via nanobind"
 readme = "README.md"
 license = { text = "MIT" }
@@ -45,6 +45,9 @@ nanodsp = "nanodsp.__main__:main"
 
 [dependency-groups]
 dev = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.5",
+    "mkdocstrings[python]>=1.0.3",
     "mypy>=1.19.1",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
@@ -58,6 +61,9 @@ build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
 wheel.packages = ["src/nanodsp"]
+wheel.exclude = [
+    "*.cpp",
+]
 cmake.args = []
 cmake.define = {}
 cmake.build-type = "Release"
@@ -84,9 +90,6 @@ sdist.exclude = [
     "thirdparty/HISSTools_Library/Documentation/",
     "thirdparty/choc/tests/",
     "thirdparty/choc/javascript/",
-]
-wheel.exclude = [
-    "*.cpp",
 ]
 
 [tool.cibuildwheel]

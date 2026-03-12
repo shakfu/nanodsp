@@ -6,6 +6,7 @@ import numpy as np
 
 from nanodsp.buffer import AudioBuffer
 from nanodsp._core import daisysp as _daisysp
+from nanodsp._core import filters as _filters
 from nanodsp._core import stk as _stk
 
 
@@ -14,17 +15,56 @@ from nanodsp._core import stk as _stk
 # ---------------------------------------------------------------------------
 
 
+def _validate_freq_hz(freq_hz: float, sample_rate: float) -> None:
+    """Validate that freq_hz is in [0, Nyquist).
+
+    Raises ValueError if freq_hz is negative or >= Nyquist.
+    """
+    if freq_hz < 0:
+        raise ValueError(
+            f"Frequency must be non-negative, got {freq_hz} Hz "
+            f"(sample_rate={sample_rate})"
+        )
+    nyquist = sample_rate / 2.0
+    if freq_hz >= nyquist:
+        raise ValueError(
+            f"Frequency {freq_hz} Hz >= Nyquist ({nyquist} Hz) "
+            f"for sample_rate={sample_rate}"
+        )
+
+
 def _hz_to_normalized(freq_hz: float, sample_rate: float) -> float:
     """Convert Hz to normalized frequency [0, 0.5).
 
     Raises ValueError if freq_hz is negative or >= Nyquist.
     """
-    if freq_hz < 0:
-        raise ValueError(f"Frequency must be non-negative, got {freq_hz}")
-    nyquist = sample_rate / 2.0
-    if freq_hz >= nyquist:
-        raise ValueError(f"Frequency {freq_hz} Hz >= Nyquist ({nyquist} Hz)")
+    _validate_freq_hz(freq_hz, sample_rate)
     return freq_hz / sample_rate
+
+
+_BIQUAD_DESIGN_MAP: dict[str, int] = {
+    "bilinear": _filters.BiquadDesign.bilinear,
+    "cookbook": _filters.BiquadDesign.cookbook,
+    "one_sided": _filters.BiquadDesign.one_sided,
+    "vicanek": _filters.BiquadDesign.vicanek,
+}
+
+
+def _resolve_biquad_design(design: str | int) -> int:
+    """Resolve a biquad design name or enum value to an int.
+
+    Accepts string names ("bilinear", "cookbook", "one_sided", "vicanek")
+    or the raw enum/int values for backward compatibility.
+    """
+    if isinstance(design, int):
+        return design
+    key = design.lower()
+    if key not in _BIQUAD_DESIGN_MAP:
+        raise ValueError(
+            f"Unknown biquad design {design!r}, "
+            f"valid: {list(_BIQUAD_DESIGN_MAP.keys())}"
+        )
+    return _BIQUAD_DESIGN_MAP[key]
 
 
 def _process_per_channel(buf: AudioBuffer, process_fn) -> AudioBuffer:

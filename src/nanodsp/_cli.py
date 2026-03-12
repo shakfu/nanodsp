@@ -533,7 +533,7 @@ def coerce_value(value: str, target_type: type | None) -> Any:
     If target_type is None, tries float -> int -> str.
     """
     if target_type is bool or target_type is (bool | None):
-        return value.lower() in ("true", "1", "yes")
+        return value.lower() in ("true", "1", "yes", "on")
     if target_type is int:
         return int(value)
     if target_type is float:

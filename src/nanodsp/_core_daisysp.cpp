@@ -32,7 +32,11 @@ static void bind_daisysp_oscillators(nb::module_ &m) {
         .def("init", &Osc::Init, "sample_rate"_a)
         .def("set_freq", &Osc::SetFreq, "freq"_a)
         .def("set_amp", &Osc::SetAmp, "amp"_a)
-        .def("set_waveform", [](Osc &self, int wf) { self.SetWaveform((uint8_t)wf); }, "waveform"_a)
+        .def("set_waveform", [](Osc &self, int wf) {
+            if (wf < 0 || wf > 7)
+                throw std::out_of_range("waveform must be 0-7, got " + std::to_string(wf));
+            self.SetWaveform((uint8_t)wf);
+        }, "waveform"_a)
         .def("set_pw", &Osc::SetPw, "pw"_a)
         .def("phase_add", &Osc::PhaseAdd, "phase"_a)
         .def("reset", &Osc::Reset, "phase"_a = 0.0f)
@@ -198,7 +202,11 @@ static void bind_daisysp_oscillators(nb::module_ &m) {
         .def("set_freq", &Bl::SetFreq, "freq"_a)
         .def("set_amp", &Bl::SetAmp, "amp"_a)
         .def("set_pw", &Bl::SetPw, "pw"_a)
-        .def("set_waveform", [](Bl &self, int wf) { self.SetWaveform((uint8_t)wf); }, "waveform"_a)
+        .def("set_waveform", [](Bl &self, int wf) {
+            if (wf < 0 || wf > 3)
+                throw std::out_of_range("waveform must be 0-3, got " + std::to_string(wf));
+            self.SetWaveform((uint8_t)wf);
+        }, "waveform"_a)
         .def("reset", &Bl::Reset)
         .def("process_sample", &Bl::Process)
         .def("process", [](Bl &self, int n) {
@@ -590,7 +598,11 @@ static void bind_daisysp_effects(nb::module_ &m) {
         .def("init", &DC::Init)
         .def("set_downsample_factor", &DC::SetDownsampleFactor, "factor"_a)
         .def("set_bitcrush_factor", &DC::SetBitcrushFactor, "factor"_a)
-        .def("set_bits_to_crush", [](DC &self, int bits) { uint8_t b = (uint8_t)bits; self.SetBitsToCrush(b); }, "bits"_a)
+        .def("set_bits_to_crush", [](DC &self, int bits) {
+            if (bits < 1 || bits > 32)
+                throw std::out_of_range("bits_to_crush must be 1-32, got " + std::to_string(bits));
+            self.SetBitsToCrush((uint8_t)bits);
+        }, "bits"_a)
         .def("set_smooth_crushing", &DC::SetSmoothCrushing, "enable"_a)
         .def("process_sample", &DC::Process, "in"_a)
         .def("process", [](DC &self, ArrayF input) {
@@ -812,7 +824,11 @@ static void bind_daisysp_dynamics(nb::module_ &m) {
         .def(nb::init<>())
         .def("init", [](CF &self, int curve) { self.Init(curve); }, "curve"_a = (int)daisysp::CROSSFADE_LIN)
         .def("set_pos", &CF::SetPos, "pos"_a)
-        .def("set_curve", [](CF &self, int curve) { self.SetCurve((uint8_t)curve); }, "curve"_a)
+        .def("set_curve", [](CF &self, int curve) {
+            if (curve < 0 || curve > 3)
+                throw std::out_of_range("curve must be 0-3, got " + std::to_string(curve));
+            self.SetCurve((uint8_t)curve);
+        }, "curve"_a)
         .def("process_sample", [](CF &self, float in1, float in2) {
             return self.Process(in1, in2);
         }, "in1"_a, "in2"_a)
@@ -910,7 +926,11 @@ static void bind_daisysp_control(nb::module_ &m) {
         .def(nb::init<>())
         .def("init", &AE::Init, "sample_rate"_a)
         .def("trigger", &AE::Trigger)
-        .def("set_time", [](AE &self, int seg, float t) { self.SetTime((uint8_t)seg, t); }, "seg"_a, "time"_a)
+        .def("set_time", [](AE &self, int seg, float t) {
+            if (seg < 0 || seg > 2)
+                throw std::out_of_range("AdEnv segment must be 0-2, got " + std::to_string(seg));
+            self.SetTime((uint8_t)seg, t);
+        }, "seg"_a, "time"_a)
         .def("set_curve", &AE::SetCurve, "scalar"_a)
         .def("set_min", &AE::SetMin, "min"_a)
         .def("set_max", &AE::SetMax, "max"_a)
@@ -941,7 +961,11 @@ static void bind_daisysp_control(nb::module_ &m) {
         .def("set_decay_time", &AD::SetDecayTime, "time"_a)
         .def("set_release_time", &AD::SetReleaseTime, "time"_a)
         .def("set_sustain_level", &AD::SetSustainLevel, "level"_a)
-        .def("set_time", [](AD &self, int seg, float t) { self.SetTime((uint8_t)seg, t); }, "seg"_a, "time"_a)
+        .def("set_time", [](AD &self, int seg, float t) {
+            if (seg < 0 || seg > 3)
+                throw std::out_of_range("Adsr segment must be 0-3, got " + std::to_string(seg));
+            self.SetTime((uint8_t)seg, t);
+        }, "seg"_a, "time"_a)
         .def("get_current_segment", [](AD &self) { return (int)self.GetCurrentSegment(); })
         .def("is_running", &AD::IsRunning)
         .def("process_sample", &AD::Process, "gate"_a)

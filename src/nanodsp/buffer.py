@@ -107,7 +107,8 @@ class AudioBuffer:
         """Return a 1D numpy view of channel *i*."""
         if i < 0 or i >= self.channels:
             raise IndexError(
-                f"Channel {i} out of range for {self.channels}-channel buffer"
+                f"Channel {i} out of range for {self.channels}-channel buffer "
+                f"(valid: 0-{self.channels - 1})"
             )
         return self._data[i]
 
@@ -309,7 +310,7 @@ class AudioBuffer:
         sr = buffers[0].sample_rate
         for b in buffers[1:]:
             if b.sample_rate != sr:
-                raise ValueError("All buffers must share the same sample_rate")
+                raise ValueError(f"sample_rate mismatch: {sr} vs {b.sample_rate}")
         arr = np.concatenate([b.data for b in buffers], axis=0)
         return AudioBuffer(arr, sample_rate=sr, label=buffers[0].label)
 

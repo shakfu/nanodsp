@@ -21,12 +21,19 @@ def saturate(
 ) -> AudioBuffer:
     """Apply saturation/distortion.
 
-    Modes:
-    - ``'soft'``: tanh soft clipping, normalized to preserve peak.
-    - ``'hard'``: hard clipping to [-1, 1].
-    - ``'tape'``: asymmetric soft clip ``x - x^3/3``.
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    drive : float
+        Drive intensity, 0.0 to 1.0 (maps to gain 1x-10x).
+    mode : str
+        Saturation type: 'soft' (tanh), 'hard' (clip), or 'tape' (asymmetric).
 
-    *drive*: 0.0 to 1.0 controls intensity (maps to gain 1x-10x).
+    Returns
+    -------
+    AudioBuffer
+        Saturated audio.
     """
     drive_scaled = np.float32(1.0 + drive * 9.0)
     data = buf.data * drive_scaled
@@ -74,8 +81,15 @@ def aa_hard_clip(buf: AudioBuffer, drive: float = 1.0) -> AudioBuffer:
 
     Parameters
     ----------
+    buf : AudioBuffer
+        Input audio.
     drive : float
         Input gain multiplier before clipping.
+
+    Returns
+    -------
+    AudioBuffer
+        Clipped audio.
     """
 
     def _process(x):
@@ -92,8 +106,15 @@ def aa_soft_clip(buf: AudioBuffer, drive: float = 1.0) -> AudioBuffer:
 
     Parameters
     ----------
+    buf : AudioBuffer
+        Input audio.
     drive : float
         Input gain multiplier before saturation.
+
+    Returns
+    -------
+    AudioBuffer
+        Saturated audio.
     """
 
     def _process(x):
@@ -110,8 +131,15 @@ def aa_wavefold(buf: AudioBuffer, drive: float = 1.0) -> AudioBuffer:
 
     Parameters
     ----------
+    buf : AudioBuffer
+        Input audio.
     drive : float
         Input gain multiplier before folding.
+
+    Returns
+    -------
+    AudioBuffer
+        Wavefolded audio.
     """
 
     def _process(x):

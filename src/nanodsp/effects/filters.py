@@ -7,6 +7,8 @@ import numpy as np
 from ..buffer import AudioBuffer
 from .._helpers import (
     _hz_to_normalized,
+    _validate_freq_hz,
+    _resolve_biquad_design,
     _process_per_channel,
     _dsy_filt,
     _LADDER_MODE_MAP,
@@ -25,9 +27,28 @@ def lowpass(
     buf: AudioBuffer,
     cutoff_hz: float,
     octaves: float | None = None,
-    design=filters.BiquadDesign.bilinear,
+    design: str | int = "bilinear",
 ) -> AudioBuffer:
+    """Apply a biquad lowpass filter.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Cutoff frequency in Hz.
+    octaves : float or None
+        Bandwidth in octaves. If None, uses default Q.
+    design : str or int
+        Biquad design method (e.g. "bilinear", "one_sided").
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(cutoff_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -44,9 +65,28 @@ def highpass(
     buf: AudioBuffer,
     cutoff_hz: float,
     octaves: float | None = None,
-    design=filters.BiquadDesign.bilinear,
+    design: str | int = "bilinear",
 ) -> AudioBuffer:
+    """Apply a biquad highpass filter.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Cutoff frequency in Hz.
+    octaves : float or None
+        Bandwidth in octaves. If None, uses default Q.
+    design : str or int
+        Biquad design method (e.g. "bilinear", "one_sided").
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(cutoff_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -63,9 +103,28 @@ def bandpass(
     buf: AudioBuffer,
     center_hz: float,
     octaves: float | None = None,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad bandpass filter.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    center_hz : float
+        Center frequency in Hz.
+    octaves : float or None
+        Bandwidth in octaves. If None, uses default Q.
+    design : str or int
+        Biquad design method (e.g. "bilinear", "one_sided").
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(center_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -82,9 +141,28 @@ def notch(
     buf: AudioBuffer,
     center_hz: float,
     octaves: float | None = None,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad notch (band-reject) filter.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    center_hz : float
+        Center frequency in Hz.
+    octaves : float or None
+        Bandwidth in octaves. If None, uses default Q.
+    design : str or int
+        Biquad design method (e.g. "bilinear", "one_sided").
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(center_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -102,9 +180,30 @@ def peak(
     center_hz: float,
     gain: float,
     octaves: float = 1.0,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad peak (bell) filter with linear gain.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    center_hz : float
+        Center frequency in Hz.
+    gain : float
+        Linear gain at center frequency.
+    octaves : float
+        Bandwidth in octaves.
+    design : str or int
+        Biquad design method.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(center_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -119,9 +218,30 @@ def peak_db(
     center_hz: float,
     db: float,
     octaves: float = 1.0,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad peak (bell) filter with gain in dB.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    center_hz : float
+        Center frequency in Hz.
+    db : float
+        Gain at center frequency in dB.
+    octaves : float
+        Bandwidth in octaves.
+    design : str or int
+        Biquad design method.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(center_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -136,9 +256,30 @@ def high_shelf(
     cutoff_hz: float,
     gain: float,
     octaves: float | None = None,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad high shelf filter with linear gain.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Shelf corner frequency in Hz.
+    gain : float
+        Linear gain above the shelf frequency.
+    octaves : float or None
+        Transition bandwidth in octaves. If None, uses default.
+    design : str or int
+        Biquad design method.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(cutoff_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -156,9 +297,30 @@ def high_shelf_db(
     cutoff_hz: float,
     db: float,
     octaves: float | None = None,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad high shelf filter with gain in dB.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Shelf corner frequency in Hz.
+    db : float
+        Gain above the shelf frequency in dB.
+    octaves : float or None
+        Transition bandwidth in octaves. If None, uses default.
+    design : str or int
+        Biquad design method.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(cutoff_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -176,9 +338,30 @@ def low_shelf(
     cutoff_hz: float,
     gain: float,
     octaves: float = 2.0,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad low shelf filter with linear gain.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Shelf corner frequency in Hz.
+    gain : float
+        Linear gain below the shelf frequency.
+    octaves : float
+        Transition bandwidth in octaves.
+    design : str or int
+        Biquad design method.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(cutoff_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -193,9 +376,30 @@ def low_shelf_db(
     cutoff_hz: float,
     db: float,
     octaves: float = 2.0,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad low shelf filter with gain in dB.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Shelf corner frequency in Hz.
+    db : float
+        Gain below the shelf frequency in dB.
+    octaves : float
+        Transition bandwidth in octaves.
+    design : str or int
+        Biquad design method.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     freq = _hz_to_normalized(cutoff_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -209,9 +413,28 @@ def allpass(
     buf: AudioBuffer,
     freq_hz: float,
     octaves: float = 1.0,
-    design=filters.BiquadDesign.one_sided,
+    design: str | int = "one_sided",
 ) -> AudioBuffer:
+    """Apply a biquad allpass filter.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Center frequency in Hz.
+    octaves : float
+        Bandwidth in octaves.
+    design : str or int
+        Biquad design method.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio (same magnitude, altered phase).
+    """
     freq = _hz_to_normalized(freq_hz, buf.sample_rate)
+    design = _resolve_biquad_design(design)
 
     def _process(x):
         bq = filters.Biquad()
@@ -222,7 +445,20 @@ def allpass(
 
 
 def biquad_process(buf: AudioBuffer, biquad) -> AudioBuffer:
-    """Process buffer through a pre-configured Biquad, resetting between channels."""
+    """Process buffer through a pre-configured Biquad, resetting between channels.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    biquad : filters.Biquad
+        Pre-configured Biquad instance.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
 
     def _process(x):
         biquad.reset()
@@ -238,6 +474,7 @@ def biquad_process(buf: AudioBuffer, biquad) -> AudioBuffer:
 
 def _make_svf(buf, freq_hz, resonance, drive, process_method):
     """Internal helper for SVF filter variants."""
+    _validate_freq_hz(freq_hz, buf.sample_rate)
 
     def _process(x):
         svf = _dsy_filt.Svf()
@@ -256,7 +493,24 @@ def svf_lowpass(
     resonance: float = 0.0,
     drive: float = 0.0,
 ) -> AudioBuffer:
-    """State-variable filter lowpass."""
+    """State-variable filter lowpass.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Cutoff frequency in Hz.
+    resonance : float
+        Resonance amount (0.0 to 1.0).
+    drive : float
+        Input drive amount.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _make_svf(buf, freq_hz, resonance, drive, "process_low")
 
 
@@ -266,7 +520,24 @@ def svf_highpass(
     resonance: float = 0.0,
     drive: float = 0.0,
 ) -> AudioBuffer:
-    """State-variable filter highpass."""
+    """State-variable filter highpass.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Cutoff frequency in Hz.
+    resonance : float
+        Resonance amount (0.0 to 1.0).
+    drive : float
+        Input drive amount.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _make_svf(buf, freq_hz, resonance, drive, "process_high")
 
 
@@ -276,7 +547,24 @@ def svf_bandpass(
     resonance: float = 0.0,
     drive: float = 0.0,
 ) -> AudioBuffer:
-    """State-variable filter bandpass."""
+    """State-variable filter bandpass.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Center frequency in Hz.
+    resonance : float
+        Resonance amount (0.0 to 1.0).
+    drive : float
+        Input drive amount.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _make_svf(buf, freq_hz, resonance, drive, "process_band")
 
 
@@ -286,7 +574,24 @@ def svf_notch(
     resonance: float = 0.0,
     drive: float = 0.0,
 ) -> AudioBuffer:
-    """State-variable filter notch."""
+    """State-variable filter notch.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Center frequency in Hz.
+    resonance : float
+        Resonance amount (0.0 to 1.0).
+    drive : float
+        Input drive amount.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _make_svf(buf, freq_hz, resonance, drive, "process_notch")
 
 
@@ -296,7 +601,24 @@ def svf_peak(
     resonance: float = 0.0,
     drive: float = 0.0,
 ) -> AudioBuffer:
-    """State-variable filter peak."""
+    """State-variable filter peak.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Center frequency in Hz.
+    resonance : float
+        Resonance amount (0.0 to 1.0).
+    drive : float
+        Input drive amount.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _make_svf(buf, freq_hz, resonance, drive, "process_peak")
 
 
@@ -322,6 +644,7 @@ def ladder_filter(
             f"Unknown ladder mode {mode!r}, valid: {list(_LADDER_MODE_MAP.keys())}"
         )
     mode_val = _LADDER_MODE_MAP[mode_key]
+    _validate_freq_hz(freq_hz, buf.sample_rate)
 
     def _process(x):
         lf = _dsy_filt.LadderFilter()
@@ -340,7 +663,23 @@ def moog_ladder(
     freq_hz: float = 1000.0,
     resonance: float = 0.0,
 ) -> AudioBuffer:
-    """Moog-style ladder lowpass filter."""
+    """Moog-style ladder lowpass filter.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Cutoff frequency in Hz.
+    resonance : float
+        Resonance amount (0.0 to 1.0).
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
+    _validate_freq_hz(freq_hz, buf.sample_rate)
 
     def _process(x):
         ml = _dsy_filt.MoogLadder()
@@ -353,7 +692,21 @@ def moog_ladder(
 
 
 def tone_lowpass(buf: AudioBuffer, freq_hz: float = 1000.0) -> AudioBuffer:
-    """One-pole lowpass filter (Tone)."""
+    """One-pole lowpass filter (Tone).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Cutoff frequency in Hz.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
+    _validate_freq_hz(freq_hz, buf.sample_rate)
 
     def _process(x):
         t = _dsy_filt.Tone()
@@ -365,7 +718,21 @@ def tone_lowpass(buf: AudioBuffer, freq_hz: float = 1000.0) -> AudioBuffer:
 
 
 def tone_highpass(buf: AudioBuffer, freq_hz: float = 1000.0) -> AudioBuffer:
-    """One-pole highpass filter (ATone)."""
+    """One-pole highpass filter (ATone).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Cutoff frequency in Hz.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
+    _validate_freq_hz(freq_hz, buf.sample_rate)
 
     def _process(x):
         at = _dsy_filt.ATone()
@@ -381,7 +748,23 @@ def modal_bandpass(
     freq_hz: float = 1000.0,
     q: float = 500.0,
 ) -> AudioBuffer:
-    """Modal resonator bandpass filter."""
+    """Modal resonator bandpass filter.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Resonant frequency in Hz.
+    q : float
+        Quality factor.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
+    _validate_freq_hz(freq_hz, buf.sample_rate)
 
     def _process(x):
         m = _dsy_filt.Mode()
@@ -399,7 +782,25 @@ def comb_filter(
     rev_time: float = 0.5,
     max_size: int = 4096,
 ) -> AudioBuffer:
-    """Comb filter."""
+    """Comb filter.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    freq_hz : float
+        Comb frequency in Hz.
+    rev_time : float
+        Reverb time (feedback decay time in seconds).
+    max_size : int
+        Maximum delay line size in samples.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
+    _validate_freq_hz(freq_hz, buf.sample_rate)
 
     def _process(x):
         c = _dsy_filt.Comb(buf.sample_rate, max_size)
@@ -424,6 +825,8 @@ _VA_FILTER_CLASSES = {
 
 
 def _va_filter(buf: AudioBuffer, cls, cutoff_hz: float, q: float) -> AudioBuffer:
+    _validate_freq_hz(cutoff_hz, buf.sample_rate)
+
     def _process(x):
         f = cls()
         f.init(float(buf.sample_rate))
@@ -437,35 +840,110 @@ def _va_filter(buf: AudioBuffer, cls, cutoff_hz: float, q: float) -> AudioBuffer
 def va_moog_ladder(
     buf: AudioBuffer, cutoff_hz: float = 1000.0, q: float = 1.0
 ) -> AudioBuffer:
-    """Moog Ladder 24 dB/oct lowpass filter (virtual analog)."""
+    """Moog Ladder 24 dB/oct lowpass filter (virtual analog).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Cutoff frequency in Hz.
+    q : float
+        Resonance / Q factor.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _va_filter(buf, _va.MoogLadder, cutoff_hz, q)
 
 
 def va_moog_half_ladder(
     buf: AudioBuffer, cutoff_hz: float = 1000.0, q: float = 1.0
 ) -> AudioBuffer:
-    """Moog Half-Ladder 12 dB/oct lowpass filter (virtual analog)."""
+    """Moog Half-Ladder 12 dB/oct lowpass filter (virtual analog).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Cutoff frequency in Hz.
+    q : float
+        Resonance / Q factor.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _va_filter(buf, _va.MoogHalfLadder, cutoff_hz, q)
 
 
 def va_diode_ladder(
     buf: AudioBuffer, cutoff_hz: float = 1000.0, q: float = 1.0
 ) -> AudioBuffer:
-    """Diode Ladder 24 dB/oct lowpass filter (virtual analog)."""
+    """Diode Ladder 24 dB/oct lowpass filter (virtual analog).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Cutoff frequency in Hz.
+    q : float
+        Resonance / Q factor.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _va_filter(buf, _va.DiodeLadder, cutoff_hz, q)
 
 
 def va_korg35_lpf(
     buf: AudioBuffer, cutoff_hz: float = 1000.0, q: float = 1.0
 ) -> AudioBuffer:
-    """Korg 35 24 dB/oct lowpass filter (virtual analog)."""
+    """Korg 35 24 dB/oct lowpass filter (virtual analog).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Cutoff frequency in Hz.
+    q : float
+        Resonance / Q factor.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _va_filter(buf, _va.Korg35LPF, cutoff_hz, q)
 
 
 def va_korg35_hpf(
     buf: AudioBuffer, cutoff_hz: float = 1000.0, q: float = 1.0
 ) -> AudioBuffer:
-    """Korg 35 24 dB/oct highpass filter (virtual analog)."""
+    """Korg 35 24 dB/oct highpass filter (virtual analog).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Cutoff frequency in Hz.
+    q : float
+        Resonance / Q factor.
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
+    """
     return _va_filter(buf, _va.Korg35HPF, cutoff_hz, q)
 
 
@@ -477,9 +955,23 @@ def va_oberheim(
 ) -> AudioBuffer:
     """Oberheim multi-mode state-variable filter (virtual analog).
 
-    Args:
-        mode: One of 'lpf', 'hpf', 'bpf', 'bsf' (notch).
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    cutoff_hz : float
+        Cutoff frequency in Hz.
+    q : float
+        Resonance / Q factor.
+    mode : str
+        One of 'lpf', 'hpf', 'bpf', 'bsf' (notch).
+
+    Returns
+    -------
+    AudioBuffer
+        Filtered audio.
     """
+    _validate_freq_hz(cutoff_hz, buf.sample_rate)
     mode_map = {"lpf": 0, "hpf": 1, "bpf": 2, "bsf": 3}
     mode_int = mode_map.get(mode)
     if mode_int is None:

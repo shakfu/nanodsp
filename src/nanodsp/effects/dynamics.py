@@ -22,7 +22,30 @@ def compress(
     makeup: float = 0.0,
     auto_makeup: bool = False,
 ) -> AudioBuffer:
-    """Apply compression per channel."""
+    """Apply compression per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    ratio : float
+        Compression ratio (e.g. 4.0 = 4:1).
+    threshold : float
+        Threshold in dB.
+    attack : float
+        Attack time in seconds.
+    release : float
+        Release time in seconds.
+    makeup : float
+        Makeup gain in dB.
+    auto_makeup : bool
+        If True, automatically compensate for gain reduction.
+
+    Returns
+    -------
+    AudioBuffer
+        Compressed audio.
+    """
 
     def _process(x):
         c = _dsy_dyn.Compressor()
@@ -39,7 +62,20 @@ def compress(
 
 
 def limit(buf: AudioBuffer, pre_gain: float = 1.0) -> AudioBuffer:
-    """Apply limiter per channel."""
+    """Apply limiter per channel.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    pre_gain : float
+        Gain applied before limiting.
+
+    Returns
+    -------
+    AudioBuffer
+        Limited audio.
+    """
 
     def _process(x):
         lm = _dsy_dyn.Limiter()

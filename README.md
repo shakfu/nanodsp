@@ -657,6 +657,41 @@ nanodsp/
   stream.py            # ring buffer, block processors, overlap-add
 ```
 
+## Performance Guidance
+
+### Computational cost tiers
+
+Cost estimates assume a typical stereo buffer at 44.1 kHz. Actual times vary with buffer length, sample rate, and hardware.
+
+| Tier | Typical latency | Functions |
+|------|----------------|-----------|
+| Cheap (< 1 ms) | Near-instant | `lowpass`, `highpass`, `bandpass`, `notch`, `peak`, `allpass`, shelving filters, `gain_db`, `normalize_peak`, `box_filter`, `peak_hold`, `peak_decay`, `delay`, `pan`, `mix_buffers`, `crossfade`, `hadamard`, `householder`, `fade_in`, `fade_out`, `trim_silence`, `dc_block` |
+| Moderate (1--10 ms) | Noticeable in tight loops | `chorus`, `flanger`, `phaser`, `tremolo`, `autowah`, `compress`, `limit`, `noise_gate`, `saturate`, `overdrive`, `exciter`, `de_esser`, `parallel_compress`, `svf_*`, `ladder_filter`, `moog_ladder`, `iir_filter`, `agc`, `aa_hard_clip`, `aa_soft_clip`, `aa_wavefold`, `formant_filter` |
+| Expensive (> 10 ms) | Dominates processing time | `stft`/`istft`, `convolve`, `reverb` (FDN, `reverb_sc`), `schroeder_reverb`, `moorer_reverb`, `time_stretch`, `pitch_shift_spectral`, `eq_match`, `spectral_denoise`, `spectral_freeze`, `psola_pitch_shift`, `resample`, `resample_fft`, `multiband_compress`, `lms_filter`, `master`, `vocal_chain` |
+
+### Block size recommendations
+
+- **Offline processing**: Pass the full file as a single `AudioBuffer`. This minimizes per-block overhead and is the simplest approach.
+- **Streaming / real-time**: Use `BlockProcessor` or `process_blocks` with 256--1024 samples per block. This range balances throughput against latency.
+- **Throughput vs. latency**: Larger blocks amortize fixed overhead (function calls, GIL acquire/release) but increase latency proportionally. At 44.1 kHz, a 512-sample block is ~11.6 ms of latency.
+- **Stateful effects**: Effects with internal state (IIR filters, compressors, FDN reverb, delays) must be initialized once and reused across blocks. `BlockProcessor` and `ProcessorChain` handle this automatically.
+
+### GIL release
+
+All C++ processing functions release the Python GIL during computation. This means you can process multiple `AudioBuffer` objects in parallel using `threading` or `concurrent.futures.ThreadPoolExecutor` and achieve true multi-core parallelism -- no need for `multiprocessing`.
+
+### Benchmarking
+
+The CLI provides a built-in benchmark command for measuring function throughput:
+
+```bash
+nanodsp benchmark lowpass:cutoff_hz=1000
+nanodsp benchmark compress:ratio=4,threshold=-20 -n 100 --duration=2.0
+nanodsp benchmark reverb:preset=hall --channels=2 --json
+```
+
+This reports iterations per second, mean time per call, and buffer throughput in seconds-of-audio per wall-second.
+
 ## Demos
 
 18 demo scripts in `demos/` showcase the full API surface. Run them all at once:

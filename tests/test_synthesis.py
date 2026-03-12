@@ -19,8 +19,9 @@ class TestDaisySPOscillators:
         assert result.frames == 1024
         assert result.data.dtype == np.float32
 
-    def test_oscillator_waveform_names(self):
-        for name in [
+    @pytest.mark.parametrize(
+        "name",
+        [
             "sine",
             "tri",
             "saw",
@@ -29,10 +30,12 @@ class TestDaisySPOscillators:
             "polyblep_tri",
             "polyblep_saw",
             "polyblep_square",
-        ]:
-            result = synthesis.oscillator(512, freq=440.0, waveform=name)
-            assert result.frames == 512
-            assert np.max(np.abs(result.data)) > 0, f"waveform {name} produced silence"
+        ],
+    )
+    def test_oscillator_waveform_names(self, name):
+        result = synthesis.oscillator(512, freq=440.0, waveform=name)
+        assert result.frames == 512
+        assert np.max(np.abs(result.data)) > 0, f"waveform {name} produced silence"
 
     def test_oscillator_int_waveform(self):
         from nanodsp._core import daisysp
@@ -75,11 +78,11 @@ class TestDaisySPOscillators:
         assert result.channels == 1
         assert result.frames == 1024
 
-    def test_bl_oscillator_waveform_names(self):
-        for name in ["triangle", "tri", "saw", "square"]:
-            result = synthesis.bl_oscillator(512, freq=440.0, waveform=name)
-            assert result.frames == 512
-            assert np.max(np.abs(result.data)) > 0, f"bl_osc waveform {name} silent"
+    @pytest.mark.parametrize("name", ["triangle", "tri", "saw", "square"])
+    def test_bl_oscillator_waveform_names(self, name):
+        result = synthesis.bl_oscillator(512, freq=440.0, waveform=name)
+        assert result.frames == 512
+        assert np.max(np.abs(result.data)) > 0, f"bl_osc waveform {name} silent"
 
     def test_bl_oscillator_invalid_waveform(self):
         with pytest.raises(ValueError, match="Unknown waveform"):
@@ -96,37 +99,37 @@ class TestDaisySPOscillators:
 
 
 class TestDaisySPNoise:
-    def test_white_noise_shape(self):
-        result = synthesis.white_noise(1024)
+    @pytest.mark.parametrize(
+        "func_name, kwargs",
+        [
+            ("white_noise", {}),
+            ("clocked_noise", {"freq": 1000.0}),
+            ("dust", {"density": 1.0}),
+        ],
+    )
+    def test_noise_shape(self, func_name, kwargs):
+        func = getattr(synthesis, func_name)
+        result = func(1024, **kwargs)
         assert result.channels == 1
         assert result.frames == 1024
         assert result.data.dtype == np.float32
 
-    def test_white_noise_nonzero(self):
-        result = synthesis.white_noise(4096)
-        assert np.max(np.abs(result.data)) > 0.1
+    @pytest.mark.parametrize(
+        "func_name, frames, kwargs",
+        [
+            ("white_noise", 4096, {}),
+            ("clocked_noise", 4096, {"freq": 1000.0}),
+            ("dust", 48000, {"density": 100.0}),
+        ],
+    )
+    def test_noise_nonzero(self, func_name, frames, kwargs):
+        func = getattr(synthesis, func_name)
+        result = func(frames, **kwargs)
+        assert np.max(np.abs(result.data)) > 0
 
     def test_white_noise_amp(self):
         result = synthesis.white_noise(4096, amp=0.1)
         assert np.max(np.abs(result.data)) < 0.5
-
-    def test_clocked_noise_shape(self):
-        result = synthesis.clocked_noise(1024, freq=1000.0)
-        assert result.channels == 1
-        assert result.frames == 1024
-
-    def test_clocked_noise_nonzero(self):
-        result = synthesis.clocked_noise(4096, freq=1000.0)
-        assert np.max(np.abs(result.data)) > 0
-
-    def test_dust_shape(self):
-        result = synthesis.dust(1024, density=1.0)
-        assert result.channels == 1
-        assert result.frames == 1024
-
-    def test_dust_nonzero(self):
-        result = synthesis.dust(48000, density=100.0)
-        assert np.max(np.abs(result.data)) > 0
 
     def test_noise_sample_rate(self):
         result = synthesis.white_noise(512, sample_rate=44100.0)
@@ -139,50 +142,26 @@ class TestDaisySPNoise:
 
 
 class TestDaisySPDrums:
-    def test_analog_bass_drum_shape(self):
-        result = synthesis.analog_bass_drum(4096)
+    _drum_funcs = [
+        "analog_bass_drum",
+        "analog_snare_drum",
+        "hihat",
+        "synthetic_bass_drum",
+        "synthetic_snare_drum",
+    ]
+
+    @pytest.mark.parametrize("drum_func", _drum_funcs)
+    def test_drum_shape(self, drum_func):
+        func = getattr(synthesis, drum_func)
+        result = func(4096)
         assert result.channels == 1
         assert result.frames == 4096
         assert result.data.dtype == np.float32
 
-    def test_analog_bass_drum_nonzero(self):
-        result = synthesis.analog_bass_drum(4096, accent=0.8)
-        assert np.max(np.abs(result.data)) > 0.01
-
-    def test_analog_snare_drum_shape(self):
-        result = synthesis.analog_snare_drum(4096)
-        assert result.channels == 1
-        assert result.frames == 4096
-
-    def test_analog_snare_drum_nonzero(self):
-        result = synthesis.analog_snare_drum(4096, accent=0.8)
-        assert np.max(np.abs(result.data)) > 0.01
-
-    def test_hihat_shape(self):
-        result = synthesis.hihat(4096)
-        assert result.channels == 1
-        assert result.frames == 4096
-
-    def test_hihat_nonzero(self):
-        result = synthesis.hihat(4096, accent=0.8)
-        assert np.max(np.abs(result.data)) > 0.01
-
-    def test_synthetic_bass_drum_shape(self):
-        result = synthesis.synthetic_bass_drum(4096)
-        assert result.channels == 1
-        assert result.frames == 4096
-
-    def test_synthetic_bass_drum_nonzero(self):
-        result = synthesis.synthetic_bass_drum(4096, accent=0.8)
-        assert np.max(np.abs(result.data)) > 0.01
-
-    def test_synthetic_snare_drum_shape(self):
-        result = synthesis.synthetic_snare_drum(4096)
-        assert result.channels == 1
-        assert result.frames == 4096
-
-    def test_synthetic_snare_drum_nonzero(self):
-        result = synthesis.synthetic_snare_drum(4096, accent=0.8)
+    @pytest.mark.parametrize("drum_func", _drum_funcs)
+    def test_drum_nonzero(self, drum_func):
+        func = getattr(synthesis, drum_func)
+        result = func(4096, accent=0.8)
         assert np.max(np.abs(result.data)) > 0.01
 
     def test_drums_decay(self):
@@ -216,32 +195,32 @@ class TestDaisySPPhysicalModeling:
         result = synthesis.karplus_strong(buf, freq_hz=440.0)
         assert result.channels == 2
 
-    def test_modal_voice_shape(self):
-        result = synthesis.modal_voice(4096, freq=440.0)
+    @pytest.mark.parametrize(
+        "func_name, nonzero_kwargs, threshold",
+        [
+            ("modal_voice", {"accent": 0.8}, 0.001),
+            ("string_voice", {"accent": 0.8}, 0.001),
+            ("pluck", {"amp": 0.8}, 0.01),
+        ],
+    )
+    def test_voice_shape(self, func_name, nonzero_kwargs, threshold):
+        func = getattr(synthesis, func_name)
+        result = func(4096, freq=440.0)
         assert result.channels == 1
         assert result.frames == 4096
 
-    def test_modal_voice_nonzero(self):
-        result = synthesis.modal_voice(4096, freq=440.0, accent=0.8)
-        assert np.max(np.abs(result.data)) > 0.001
-
-    def test_string_voice_shape(self):
-        result = synthesis.string_voice(4096, freq=440.0)
-        assert result.channels == 1
-        assert result.frames == 4096
-
-    def test_string_voice_nonzero(self):
-        result = synthesis.string_voice(4096, freq=440.0, accent=0.8)
-        assert np.max(np.abs(result.data)) > 0.001
-
-    def test_pluck_shape(self):
-        result = synthesis.pluck(4096, freq=440.0)
-        assert result.channels == 1
-        assert result.frames == 4096
-
-    def test_pluck_nonzero(self):
-        result = synthesis.pluck(4096, freq=440.0, amp=0.8)
-        assert np.max(np.abs(result.data)) > 0.01
+    @pytest.mark.parametrize(
+        "func_name, nonzero_kwargs, threshold",
+        [
+            ("modal_voice", {"accent": 0.8}, 0.001),
+            ("string_voice", {"accent": 0.8}, 0.001),
+            ("pluck", {"amp": 0.8}, 0.01),
+        ],
+    )
+    def test_voice_nonzero(self, func_name, nonzero_kwargs, threshold):
+        func = getattr(synthesis, func_name)
+        result = func(4096, freq=440.0, **nonzero_kwargs)
+        assert np.max(np.abs(result.data)) > threshold
 
     def test_drip_shape(self):
         result = synthesis.drip(4096)
@@ -273,8 +252,9 @@ class TestSynthNote:
         )
         assert np.max(np.abs(result.data)) > 0.001
 
-    def test_all_instruments(self):
-        for name in [
+    @pytest.mark.parametrize(
+        "name",
+        [
             "clarinet",
             "flute",
             "brass",
@@ -287,10 +267,12 @@ class TestSynthNote:
             "blowbotl",
             "blowhole",
             "whistle",
-        ]:
-            result = synthesis.synth_note(name, freq=440.0, duration=0.2, release=0.05)
-            assert result.channels == 1, f"{name} wrong channels"
-            assert result.frames > 0, f"{name} no frames"
+        ],
+    )
+    def test_all_instruments(self, name):
+        result = synthesis.synth_note(name, freq=440.0, duration=0.2, release=0.05)
+        assert result.channels == 1, f"{name} wrong channels"
+        assert result.frames > 0, f"{name} no frames"
 
     def test_invalid_instrument_raises(self):
         with pytest.raises(ValueError, match="Unknown instrument"):
