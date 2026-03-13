@@ -1142,7 +1142,7 @@ class TestTapeEcho:
         result = composed.tape_echo(buf, delay_ms=200, feedback=0.5, mix=1.0)
         delay_samples = int(sr * 0.2)
         # Energy after the delay offset should be nonzero
-        tail_energy = np.sum(result.data[0, delay_samples:delay_samples + 1000] ** 2)
+        tail_energy = np.sum(result.data[0, delay_samples : delay_samples + 1000] ** 2)
         assert tail_energy > 1e-6
 
     def test_repeats_decay(self):
@@ -1152,8 +1152,8 @@ class TestTapeEcho:
         buf.data[0, :100] = 1.0
         result = composed.tape_echo(buf, delay_ms=100, feedback=0.4, repeats=4, mix=1.0)
         ds = int(sr * 0.1)
-        e1 = np.sum(result.data[0, ds:ds + ds] ** 2)
-        e2 = np.sum(result.data[0, 2 * ds:3 * ds] ** 2)
+        e1 = np.sum(result.data[0, ds : ds + ds] ** 2)
+        e2 = np.sum(result.data[0, 2 * ds : 3 * ds] ** 2)
         assert e1 > e2
 
     def test_stereo(self):
@@ -1288,11 +1288,17 @@ class TestGatedReverb:
         from nanodsp.effects.reverb import reverb as _reverb
 
         buf = AudioBuffer.zeros(1, 48000, sample_rate=48000.0)
-        buf.data[0, :200] = np.random.default_rng(0).standard_normal(200).astype(np.float32)
+        buf.data[0, :200] = (
+            np.random.default_rng(0).standard_normal(200).astype(np.float32)
+        )
         ungated = _reverb(buf, preset="plate", mix=1.0, decay=0.7)
         gated = composed.gated_reverb(
-            buf, preset="plate", decay=0.7, mix=1.0,
-            gate_threshold_db=-20.0, gate_release=0.01,
+            buf,
+            preset="plate",
+            decay=0.7,
+            mix=1.0,
+            gate_threshold_db=-20.0,
+            gate_release=0.01,
         )
         # Tail energy (last 25%) should be lower in gated version
         q = buf.frames // 4
@@ -1368,6 +1374,6 @@ class TestAutoPan:
         assert result.channels == 2
         assert result.frames == buf.frames
         assert np.all(np.isfinite(result.data))
-        energy_in = np.sum(buf.data ** 2)
-        energy_out = np.sum(result.data ** 2)
+        energy_in = np.sum(buf.data**2)
+        energy_out = np.sum(result.data**2)
         np.testing.assert_allclose(energy_out, energy_in, rtol=0.05)

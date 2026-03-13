@@ -735,7 +735,9 @@ def tape_echo(
         gain = feedback ** (i + 1)
         if offset < n:
             frames_avail = min(tap.frames, n - offset)
-            wet[:, offset:offset + frames_avail] += np.float32(gain) * tap.data[:, :frames_avail]
+            wet[:, offset : offset + frames_avail] += (
+                np.float32(gain) * tap.data[:, :frames_avail]
+            )
 
     out = (1.0 - mix) * buf.data + mix * wet
     return AudioBuffer(

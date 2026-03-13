@@ -612,7 +612,7 @@ class TestPingPongDelay:
         # Crossed feedback: impulse in L delay -> fb_l set after 1 delay period
         # -> written into R delay -> appears in R after 2 delay periods
         delay_samples = int(SR * 0.01)
-        assert np.max(np.abs(out[1, 2 * delay_samples:])) > 0.01
+        assert np.max(np.abs(out[1, 2 * delay_samples :])) > 0.01
 
     def test_reset(self):
         ppd = fx.PingPongDelay()
