@@ -136,6 +136,7 @@ class TestResample:
     def test_identity(self):
         buf = AudioBuffer.noise(channels=1, frames=1024, sample_rate=48000.0, seed=0)
         result = analysis.resample(buf, 48000.0)
+        assert result.frames == buf.frames
         np.testing.assert_array_equal(result.data, buf.data)
 
     def test_2x_up_output_sr(self):

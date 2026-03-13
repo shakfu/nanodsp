@@ -16,6 +16,8 @@ class TestOscillator:
     def test_construction_and_init(self):
         osc = daisysp.oscillators.Oscillator()
         osc.init(SR)
+        assert osc is not None
+        assert isinstance(osc, daisysp.oscillators.Oscillator)
 
     def test_waveform_constants(self):
         m = daisysp.oscillators

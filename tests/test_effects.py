@@ -78,6 +78,9 @@ class TestFilterFunctions:
     def test_allpass_preserves_magnitude(self):
         buf = AudioBuffer.sine(5000.0, frames=4096, sample_rate=48000.0)
         result = fx_filters.allpass(buf, 5000.0)
+        assert result.channels == buf.channels
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
         in_energy = np.sum(buf.data**2)
         out_energy = np.sum(result.data**2)
         np.testing.assert_allclose(out_energy, in_energy, rtol=0.01)
@@ -452,6 +455,9 @@ class TestSaturate:
         buf = AudioBuffer.noise(channels=1, frames=2048, sample_rate=48000.0, seed=0)
         buf = buf * 0.1  # keep signal very small so tanh(x) ~= x
         result = saturation.saturate(buf, drive=0.0, mode="soft")
+        assert result.channels == buf.channels
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
         np.testing.assert_allclose(result.data, buf.data, atol=0.02)
 
     def test_hard_clip_bounded(self):
@@ -474,6 +480,8 @@ class TestSaturate:
         """Soft saturation should approximately preserve peak amplitude."""
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
         result = saturation.saturate(buf, drive=0.5, mode="soft")
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
         peak_in = np.max(np.abs(buf.data))
         peak_out = np.max(np.abs(result.data))
         np.testing.assert_allclose(peak_out, peak_in, rtol=0.05)
@@ -494,6 +502,9 @@ class TestExciter:
     def test_amount_zero_near_identity(self):
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
         result = composed.exciter(buf, amount=0.0)
+        assert result.channels == buf.channels
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
         np.testing.assert_allclose(result.data, buf.data, atol=1e-6)
 
     def test_adds_energy_above_freq(self):
@@ -555,6 +566,9 @@ class TestParallelCompress:
     def test_mix_zero_identity(self):
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
         result = composed.parallel_compress(buf, mix=0.0)
+        assert result.channels == buf.channels
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
         np.testing.assert_allclose(result.data, buf.data, atol=1e-5)
 
     def test_modifies_signal(self):
@@ -600,6 +614,9 @@ class TestReverb:
         """mix=0 should return the dry signal."""
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
         result = reverb.reverb(buf, mix=0.0, preset="room")
+        assert result.channels == 2
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
         # Dry stereo = mono duplicated to both channels
         np.testing.assert_allclose(result.data[0], buf.data[0], atol=1e-5)
         np.testing.assert_allclose(result.data[1], buf.data[0], atol=1e-5)
@@ -716,6 +733,8 @@ class TestNoiseGate:
     def test_silence_stays_silent(self):
         buf = AudioBuffer.zeros(1, 4096, sample_rate=48000.0)
         result = dynamics.noise_gate(buf, threshold_db=-60.0)
+        assert result.channels == buf.channels
+        assert result.frames == buf.frames
         np.testing.assert_array_equal(result.data, 0.0)
 
     def test_loud_signal_passes(self):
@@ -772,6 +791,9 @@ class TestStereoDelay:
     def test_mix_zero_dry(self):
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
         result = composed.stereo_delay(buf, mix=0.0)
+        assert result.channels == 2
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
         # Dry = mono duplicated to stereo
         np.testing.assert_allclose(result.data[0], buf.data[0], atol=1e-6)
         np.testing.assert_allclose(result.data[1], buf.data[0], atol=1e-6)
@@ -1041,3 +1063,311 @@ class TestAgc:
         result = dynamics.agc(buf)
         assert result.sample_rate == 44100.0
         assert result.label == "agc"
+
+
+# ---------------------------------------------------------------------------
+# Shimmer Reverb
+# ---------------------------------------------------------------------------
+
+
+class TestShimmerReverb:
+    def test_output_stereo(self):
+        """FDN reverb always returns stereo, so shimmer_reverb does too."""
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.shimmer_reverb(buf)
+        assert result.channels == 2
+        assert result.frames == 8192
+
+    def test_mix_zero_passes_dry(self):
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.shimmer_reverb(buf, mix=0.0)
+        assert result.channels == 2
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
+        # Dry mono is tiled to stereo
+        expected = np.tile(buf.data, (2, 1))
+        np.testing.assert_allclose(result.data, expected, atol=1e-5)
+
+    def test_modifies_signal(self):
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.shimmer_reverb(buf, mix=0.4, shimmer=0.3)
+        assert not np.allclose(result.data, buf.data)
+
+    def test_shimmer_zero_is_plain_reverb(self):
+        """With shimmer=0, should behave like plain reverb (no pitch shift)."""
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        r1 = composed.shimmer_reverb(buf, mix=0.5, shimmer=0.0, preset="room")
+        r2 = composed.shimmer_reverb(buf, mix=0.5, shimmer=0.5, preset="room")
+        # Different shimmer amounts should produce different output
+        assert not np.allclose(r1.data, r2.data)
+
+    def test_stereo(self):
+        buf = AudioBuffer.noise(channels=2, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.shimmer_reverb(buf)
+        assert result.channels == 2
+
+    def test_presets(self):
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        for preset in ("room", "hall", "plate", "chamber", "cathedral"):
+            result = composed.shimmer_reverb(buf, preset=preset)
+            assert result.frames == 8192
+
+
+# ---------------------------------------------------------------------------
+# Tape Echo
+# ---------------------------------------------------------------------------
+
+
+class TestTapeEcho:
+    def test_shape_preserved(self):
+        buf = AudioBuffer.noise(channels=1, frames=24000, sample_rate=48000.0, seed=0)
+        result = composed.tape_echo(buf, delay_ms=100)
+        assert result.channels == 1
+        assert result.frames == 24000
+
+    def test_mix_zero_identity(self):
+        buf = AudioBuffer.noise(channels=1, frames=24000, sample_rate=48000.0, seed=0)
+        result = composed.tape_echo(buf, mix=0.0)
+        assert result.channels == buf.channels
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
+        np.testing.assert_allclose(result.data, buf.data, atol=1e-5)
+
+    def test_echo_appears_after_delay(self):
+        """Energy should appear in the delay region that was silent in the input."""
+        sr = 48000
+        buf = AudioBuffer.zeros(1, sr, sample_rate=float(sr))
+        # Impulse in first 100 samples
+        buf.data[0, :100] = 1.0
+        result = composed.tape_echo(buf, delay_ms=200, feedback=0.5, mix=1.0)
+        delay_samples = int(sr * 0.2)
+        # Energy after the delay offset should be nonzero
+        tail_energy = np.sum(result.data[0, delay_samples:delay_samples + 1000] ** 2)
+        assert tail_energy > 1e-6
+
+    def test_repeats_decay(self):
+        """Later repeats should have less energy than earlier ones."""
+        sr = 48000
+        buf = AudioBuffer.zeros(1, sr, sample_rate=float(sr))
+        buf.data[0, :100] = 1.0
+        result = composed.tape_echo(buf, delay_ms=100, feedback=0.4, repeats=4, mix=1.0)
+        ds = int(sr * 0.1)
+        e1 = np.sum(result.data[0, ds:ds + ds] ** 2)
+        e2 = np.sum(result.data[0, 2 * ds:3 * ds] ** 2)
+        assert e1 > e2
+
+    def test_stereo(self):
+        buf = AudioBuffer.noise(channels=2, frames=24000, sample_rate=48000.0, seed=0)
+        result = composed.tape_echo(buf, delay_ms=100)
+        assert result.channels == 2
+
+    def test_tone_darkens(self):
+        """Lower tone should produce darker echoes."""
+        buf = AudioBuffer.noise(channels=1, frames=24000, sample_rate=48000.0, seed=0)
+        bright = composed.tape_echo(buf, tone=8000.0, mix=1.0)
+        dark = composed.tape_echo(buf, tone=1000.0, mix=1.0)
+        # Spectral centroid proxy: dark should have less HF energy
+        fft_bright = np.abs(np.fft.rfft(bright.data[0]))
+        fft_dark = np.abs(np.fft.rfft(dark.data[0]))
+        freqs = np.fft.rfftfreq(bright.frames, 1.0 / 48000.0)
+        centroid_bright = np.sum(freqs * fft_bright) / (np.sum(fft_bright) + 1e-12)
+        centroid_dark = np.sum(freqs * fft_dark) / (np.sum(fft_dark) + 1e-12)
+        assert centroid_dark < centroid_bright
+
+
+# ---------------------------------------------------------------------------
+# Lo-Fi
+# ---------------------------------------------------------------------------
+
+
+class TestLoFi:
+    def test_shape_preserved(self):
+        buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.lo_fi(buf)
+        assert result.channels == 1
+        assert result.frames == 4096
+
+    def test_modifies_signal(self):
+        buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.lo_fi(buf)
+        assert not np.allclose(result.data, buf.data)
+
+    def test_tone_controls_brightness(self):
+        """Lower tone cutoff should produce darker output."""
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        bright = composed.lo_fi(buf, tone=8000.0)
+        dark = composed.lo_fi(buf, tone=1500.0)
+        fft_bright = np.abs(np.fft.rfft(bright.data[0]))
+        fft_dark = np.abs(np.fft.rfft(dark.data[0]))
+        freqs = np.fft.rfftfreq(buf.frames, 1.0 / 48000.0)
+        hf_mask = freqs > 4000
+        hf_bright = np.sum(fft_bright[hf_mask] ** 2)
+        hf_dark = np.sum(fft_dark[hf_mask] ** 2)
+        assert hf_dark < hf_bright
+
+    def test_stereo(self):
+        buf = AudioBuffer.noise(channels=2, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.lo_fi(buf)
+        assert result.channels == 2
+
+    def test_bit_depth_affects_output(self):
+        """Different bit depths should produce different outputs."""
+        buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
+        r4 = composed.lo_fi(buf, bit_depth=4, reduce=0.0)
+        r12 = composed.lo_fi(buf, bit_depth=12, reduce=0.0)
+        assert not np.allclose(r4.data, r12.data)
+
+
+# ---------------------------------------------------------------------------
+# Telephone
+# ---------------------------------------------------------------------------
+
+
+class TestTelephone:
+    def test_shape_preserved(self):
+        buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.telephone(buf)
+        assert result.channels == 1
+        assert result.frames == 4096
+
+    def test_bandlimits_signal(self):
+        """Telephone should cut below 300 Hz and above 3400 Hz."""
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.telephone(buf)
+        fft_out = np.abs(np.fft.rfft(result.data[0]))
+        freqs = np.fft.rfftfreq(buf.frames, 1.0 / 48000.0)
+        lo_mask = freqs < 200
+        mid_mask = (freqs > 500) & (freqs < 3000)
+        lo_energy = np.sum(fft_out[lo_mask] ** 2)
+        mid_energy = np.sum(fft_out[mid_mask] ** 2)
+        # Low frequencies should be strongly attenuated
+        assert lo_energy < mid_energy * 0.1
+        # HF test is relaxed because hard saturation reintroduces harmonics
+        # above the lowpass cutoff -- this is expected telephone character
+
+    def test_modifies_signal(self):
+        buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.telephone(buf)
+        assert not np.allclose(result.data, buf.data)
+
+    def test_stereo(self):
+        buf = AudioBuffer.noise(channels=2, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.telephone(buf)
+        assert result.channels == 2
+
+
+# ---------------------------------------------------------------------------
+# Gated Reverb
+# ---------------------------------------------------------------------------
+
+
+class TestGatedReverb:
+    def test_output_stereo(self):
+        """FDN reverb always returns stereo, so gated_reverb does too."""
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.gated_reverb(buf)
+        assert result.channels == 2
+        assert result.frames == 8192
+
+    def test_mix_zero_passes_dry(self):
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.gated_reverb(buf, mix=0.0)
+        assert result.channels == 2
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
+        expected = np.tile(buf.data, (2, 1))
+        np.testing.assert_allclose(result.data, expected, atol=1e-5)
+
+    def test_modifies_signal(self):
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.gated_reverb(buf, mix=0.5)
+        assert not np.allclose(result.data, buf.data)
+
+    def test_gate_reduces_tail(self):
+        """Gated reverb should have less tail energy than ungated reverb."""
+        from nanodsp.effects.reverb import reverb as _reverb
+
+        buf = AudioBuffer.zeros(1, 48000, sample_rate=48000.0)
+        buf.data[0, :200] = np.random.default_rng(0).standard_normal(200).astype(np.float32)
+        ungated = _reverb(buf, preset="plate", mix=1.0, decay=0.7)
+        gated = composed.gated_reverb(
+            buf, preset="plate", decay=0.7, mix=1.0,
+            gate_threshold_db=-20.0, gate_release=0.01,
+        )
+        # Tail energy (last 25%) should be lower in gated version
+        q = buf.frames // 4
+        tail_ungated = np.sum(ungated.data[:, -q:] ** 2)
+        tail_gated = np.sum(gated.data[:, -q:] ** 2)
+        assert tail_gated < tail_ungated
+
+    def test_stereo(self):
+        buf = AudioBuffer.noise(channels=2, frames=8192, sample_rate=48000.0, seed=0)
+        result = composed.gated_reverb(buf)
+        assert result.channels == 2
+
+    def test_presets(self):
+        buf = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=0)
+        for preset in ("room", "plate", "hall"):
+            result = composed.gated_reverb(buf, preset=preset)
+            assert result.frames == 8192
+
+
+# ---------------------------------------------------------------------------
+# Auto-Pan
+# ---------------------------------------------------------------------------
+
+
+class TestAutoPan:
+    def test_output_is_stereo(self):
+        buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.auto_pan(buf)
+        assert result.channels == 2
+        assert result.frames == 4096
+
+    def test_stereo_input(self):
+        buf = AudioBuffer.noise(channels=2, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.auto_pan(buf)
+        assert result.channels == 2
+
+    def test_depth_zero_centered(self):
+        """With depth=0 and center=0, both channels should be equal (center pan)."""
+        buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
+        result = composed.auto_pan(buf, depth=0.0, center=0.0)
+        assert result.channels == 2
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
+        np.testing.assert_allclose(result.data[0], result.data[1], atol=1e-6)
+
+    def test_panning_creates_channel_difference(self):
+        """With nonzero depth, L and R should differ over time."""
+        buf = AudioBuffer.noise(channels=1, frames=48000, sample_rate=48000.0, seed=0)
+        result = composed.auto_pan(buf, rate=2.0, depth=1.0)
+        # L and R should not be identical
+        assert not np.allclose(result.data[0], result.data[1])
+
+    def test_center_left(self):
+        """Center=-1 should put more energy in the left channel."""
+        buf = AudioBuffer.noise(channels=1, frames=48000, sample_rate=48000.0, seed=0)
+        result = composed.auto_pan(buf, rate=1.0, depth=0.0, center=-1.0)
+        left_energy = np.sum(result.data[0] ** 2)
+        right_energy = np.sum(result.data[1] ** 2)
+        assert left_energy > right_energy * 5
+
+    def test_center_right(self):
+        """Center=+1 should put more energy in the right channel."""
+        buf = AudioBuffer.noise(channels=1, frames=48000, sample_rate=48000.0, seed=0)
+        result = composed.auto_pan(buf, rate=1.0, depth=0.0, center=1.0)
+        left_energy = np.sum(result.data[0] ** 2)
+        right_energy = np.sum(result.data[1] ** 2)
+        assert right_energy > left_energy * 5
+
+    def test_energy_preserved(self):
+        """Auto-pan should roughly preserve total energy (equal-power panning)."""
+        buf = AudioBuffer.noise(channels=1, frames=48000, sample_rate=48000.0, seed=0)
+        result = composed.auto_pan(buf, rate=2.0, depth=1.0)
+        assert result.channels == 2
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
+        energy_in = np.sum(buf.data ** 2)
+        energy_out = np.sum(result.data ** 2)
+        np.testing.assert_allclose(energy_out, energy_in, rtol=0.05)

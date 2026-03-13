@@ -116,6 +116,7 @@ class TestRingBuffer:
         data = AudioBuffer.noise(2, 64, seed=42)
         rb.write(data)
         result = rb.read(64)
+        assert result.channels == 2
         np.testing.assert_array_equal(result.data, data.data)
 
     def test_empty_read_returns_zero_frames(self):
@@ -204,12 +205,14 @@ class TestBlockProcessor:
         proc = _IdentityProcessor(block_size=256)
         buf = AudioBuffer.noise(1, 1000, seed=0)
         result = proc.process(buf)
+        assert result.frames == buf.frames
         np.testing.assert_array_equal(result.data, buf.data)
 
     def test_correct_chunking(self):
         proc = _GainProcessor(2.0, block_size=256)
         buf = AudioBuffer.ones(1, 1000)
         result = proc.process(buf)
+        assert result.frames == buf.frames
         np.testing.assert_allclose(result.data, 2.0, atol=1e-6)
 
     def test_last_block_padding_trimming(self):
@@ -260,6 +263,7 @@ class TestBlockProcessor:
         proc = _GainProcessor(3.0, block_size=1)
         buf = AudioBuffer.ones(1, 10)
         result = proc.process(buf)
+        assert result.frames == buf.frames
         np.testing.assert_allclose(result.data, 3.0, atol=1e-6)
 
 
@@ -276,6 +280,7 @@ class TestCallbackProcessor:
         proc = CallbackProcessor(double, block_size=128)
         buf = AudioBuffer.ones(1, 300)
         result = proc.process(buf)
+        assert result.frames == buf.frames
         np.testing.assert_allclose(result.data, 2.0, atol=1e-6)
 
     def test_callback_lambda(self):
@@ -285,6 +290,7 @@ class TestCallbackProcessor:
         )
         buf = AudioBuffer.zeros(1, 200)
         result = proc.process(buf)
+        assert result.data.dtype == np.float32
         np.testing.assert_allclose(result.data, 1.0, atol=1e-6)
 
 
@@ -301,6 +307,7 @@ class TestProcessorChain:
         )
         buf = AudioBuffer.noise(1, 500, seed=0)
         result = chain.process(buf)
+        assert result.frames == buf.frames
         np.testing.assert_array_equal(result.data, buf.data)
 
     def test_chain_applies_in_order(self):
@@ -311,6 +318,7 @@ class TestProcessorChain:
         )
         buf = AudioBuffer.ones(1, 300)
         result = chain.process(buf)
+        assert result.channels == buf.channels
         np.testing.assert_allclose(result.data, 6.0, atol=1e-5)
 
     def test_reset_propagates(self):
@@ -333,6 +341,7 @@ class TestProcessorChain:
         )
         buf = AudioBuffer.ones(1, 200)
         result = chain.process(buf)
+        assert result.frames == buf.frames
         np.testing.assert_allclose(result.data, 8.0, atol=1e-4)
 
     def test_chain_multichannel(self):
@@ -354,6 +363,7 @@ class TestProcessBlocks:
     def test_non_overlapping_identity(self):
         buf = AudioBuffer.noise(1, 500, seed=0)
         result = process_blocks(buf, lambda b: b, block_size=128)
+        assert result.frames == buf.frames
         np.testing.assert_array_equal(result.data, buf.data)
 
     def test_non_overlapping_gain(self):
@@ -363,6 +373,7 @@ class TestProcessBlocks:
             return AudioBuffer(b.data * 2, sample_rate=b.sample_rate)
 
         result = process_blocks(buf, double, block_size=128)
+        assert result.channels == buf.channels
         np.testing.assert_allclose(result.data, 2.0, atol=1e-6)
 
     def test_overlap_add_reconstructs(self):
@@ -371,6 +382,7 @@ class TestProcessBlocks:
         # With identity processing and COLA, interior should reconstruct well
         # (edges may differ due to incomplete window coverage)
         margin = 512  # skip edges equal to one block
+        assert result.data.dtype == np.float32
         np.testing.assert_allclose(
             result.data[:, margin:-margin],
             buf.data[:, margin:-margin],

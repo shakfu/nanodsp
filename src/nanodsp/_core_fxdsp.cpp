@@ -169,4 +169,77 @@ void bind_fxdsp(nb::module_ &m) {
       .def("process", [](FormantFilter &self, ArrayF input) {
           return process_array(self, input);
       }, "input"_a);
+
+    // --- Ping-Pong Delay ---
+
+    nb::class_<PingPongDelay>(sub, "PingPongDelay",
+        "Stereo ping-pong delay with crossed feedback and linear interpolation")
+        .def(nb::init<>())
+        .def("init", &PingPongDelay::init,
+             "sample_rate"_a, "max_delay_ms"_a = 2000.0f)
+        .def("reset", &PingPongDelay::reset)
+        .def_prop_rw("delay_ms",
+                     &PingPongDelay::get_delay_ms, &PingPongDelay::set_delay_ms)
+        .def_prop_rw("feedback",
+                     &PingPongDelay::get_feedback, &PingPongDelay::set_feedback)
+        .def_prop_rw("mix",
+                     &PingPongDelay::get_mix, &PingPongDelay::set_mix)
+        .def("tick", [](PingPongDelay &self, float in_l, float in_r) {
+            auto p = self.tick(in_l, in_r);
+            return nb::make_tuple(p.first, p.second);
+        }, "in_l"_a, "in_r"_a, "Process one stereo sample, returns (left, right)")
+        .def("process", [](PingPongDelay &self, Array2F input) {
+            if (input.shape(0) != 2)
+                throw std::invalid_argument(
+                    "PingPongDelay.process expects shape [2, N]");
+            size_t n = input.shape(1);
+            float *out_l = new float[n];
+            float *out_r = new float[n];
+            const float *in_l = input.data();
+            const float *in_r = input.data() + n;
+            {
+                nb::gil_scoped_release rel;
+                self.process(in_l, in_r, out_l, out_r, (unsigned)n);
+            }
+            float *out = new float[2 * n];
+            std::memcpy(out, out_l, n * sizeof(float));
+            std::memcpy(out + n, out_r, n * sizeof(float));
+            delete[] out_l;
+            delete[] out_r;
+            return make_f2(out, 2, n);
+        }, "input"_a, "Process stereo array [2, N] -> [2, N]");
+
+    // --- Frequency Shifter ---
+
+    nb::class_<FreqShifter>(sub, "FreqShifter",
+        "Bode-style frequency shifter using allpass Hilbert transform")
+        .def(nb::init<>())
+        .def("init", &FreqShifter::init, "sample_rate"_a)
+        .def("reset", &FreqShifter::reset)
+        .def_prop_rw("shift_hz",
+                     &FreqShifter::get_shift_hz, &FreqShifter::set_shift_hz)
+        .def("tick", &FreqShifter::tick, "x"_a, "Process one sample")
+        .def("process", [](FreqShifter &self, ArrayF input) {
+            return process_array(self, input);
+        }, "input"_a, "Process array of samples");
+
+    // --- Ring Modulator ---
+
+    nb::class_<RingMod>(sub, "RingMod",
+        "Ring modulator with carrier oscillator and optional LFO FM")
+        .def(nb::init<>())
+        .def("init", &RingMod::init, "sample_rate"_a)
+        .def("reset", &RingMod::reset)
+        .def_prop_rw("carrier_freq",
+                     &RingMod::get_carrier_freq, &RingMod::set_carrier_freq)
+        .def_prop_rw("lfo_freq",
+                     &RingMod::get_lfo_freq, &RingMod::set_lfo_freq)
+        .def_prop_rw("lfo_width",
+                     &RingMod::get_lfo_width, &RingMod::set_lfo_width)
+        .def_prop_rw("mix",
+                     &RingMod::get_mix, &RingMod::set_mix)
+        .def("tick", &RingMod::tick, "x"_a, "Process one sample")
+        .def("process", [](RingMod &self, ArrayF input) {
+            return process_array(self, input);
+        }, "input"_a, "Process array of samples");
 }

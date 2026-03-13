@@ -76,6 +76,7 @@ class TestPolyBLEPGeneration:
         osc2.frequency = 440.0
         ticked = np.array([osc1.tick() for _ in range(256)], dtype=np.float32)
         generated = osc2.generate(256)
+        assert ticked.shape == generated.shape
         np.testing.assert_allclose(ticked, generated, atol=1e-6)
 
     def test_sine_bounded(self):
@@ -108,6 +109,7 @@ class TestPolyBLEPGeneration:
         out1 = osc.generate(256)
         osc.reset()
         out2 = osc.generate(256)
+        assert out1.shape == (256,)
         np.testing.assert_allclose(out1, out2, atol=1e-6)
 
     def test_sync(self):

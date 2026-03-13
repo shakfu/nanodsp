@@ -7,7 +7,13 @@ from nanodsp._core import fxdsp as fx
 from nanodsp.buffer import AudioBuffer
 from nanodsp.effects.saturation import aa_hard_clip, aa_soft_clip, aa_wavefold
 from nanodsp.effects.reverb import schroeder_reverb, moorer_reverb
-from nanodsp.effects.composed import formant_filter, psola_pitch_shift
+from nanodsp.effects.composed import (
+    formant_filter,
+    psola_pitch_shift,
+    ping_pong_delay,
+    freq_shift,
+    ring_mod,
+)
 from nanodsp.synthesis import minblep
 
 
@@ -66,6 +72,8 @@ class TestHardClipper:
         hc = fx.HardClipper()
         x = make_sine(amp=0.5)
         out = hc.process(x)
+        assert out.shape == x.shape
+        assert out.dtype == np.float32
         # With AA, not exactly equal but close
         np.testing.assert_allclose(out, x, atol=0.15)
 
@@ -81,6 +89,8 @@ class TestHardClipper:
         out1 = hc.process(x)
         hc.reset()
         out2 = hc.process(x)
+        assert out1.shape == x.shape
+        assert out2.dtype == np.float32
         np.testing.assert_allclose(out1, out2, atol=1e-6)
 
     def test_tick_matches_process(self):
@@ -89,6 +99,8 @@ class TestHardClipper:
         x = make_sine(amp=2.0, frames=64)
         ticked = np.array([hc1.tick(float(s)) for s in x], dtype=np.float32)
         processed = hc2.process(x)
+        assert ticked.shape == processed.shape
+        assert np.all(np.isfinite(ticked))
         np.testing.assert_allclose(ticked, processed, atol=1e-6)
 
 
@@ -113,6 +125,8 @@ class TestSoftClipper:
         out1 = sc.process(x)
         sc.reset()
         out2 = sc.process(x)
+        assert out1.shape == x.shape
+        assert out2.dtype == np.float32
         np.testing.assert_allclose(out1, out2, atol=1e-6)
 
 
@@ -138,6 +152,8 @@ class TestWavefolder:
         out1 = wf.process(x)
         wf.reset()
         out2 = wf.process(x)
+        assert out1.shape == x.shape
+        assert out2.dtype == np.float32
         np.testing.assert_allclose(out1, out2, atol=1e-6)
 
 
@@ -306,6 +322,8 @@ class TestMinBLEP:
         out1 = mb.generate(512)
         mb.reset()
         out2 = mb.generate(512)
+        assert out1.shape == (512,)
+        assert out1.dtype == np.float32
         np.testing.assert_allclose(out1, out2, atol=1e-5)
 
     def test_tick_matches_generate(self):
@@ -313,6 +331,8 @@ class TestMinBLEP:
         mb2 = fx.MinBLEP(44100.0, 440.0)
         ticked = np.array([mb1.tick() for _ in range(256)], dtype=np.float32)
         generated = mb2.generate(256)
+        assert ticked.shape == generated.shape
+        assert np.all(np.isfinite(ticked))
         np.testing.assert_allclose(ticked, generated, atol=1e-6)
 
 
@@ -330,6 +350,8 @@ class TestPSOLA:
     def test_no_shift(self):
         x = make_sine(freq=220.0, frames=4000)
         out = fx.psola_pitch_shift(x, SR, 0.0)
+        assert out.shape == x.shape
+        assert out.dtype == np.float32
         # Zero semitones should return original
         np.testing.assert_array_equal(out, x)
 
@@ -400,6 +422,8 @@ class TestFormantFilter:
         out1 = ff.process(noise)
         ff.reset()
         out2 = ff.process(noise)
+        assert out1.shape == noise.shape
+        assert out1.dtype == np.float32
         np.testing.assert_allclose(out1, out2, atol=1e-5)
 
     def test_silence_produces_silence(self):
@@ -495,6 +519,7 @@ class TestFormantFilterPython:
         buf = make_buf(make_sine())
         with pytest.raises(ValueError, match="Unknown vowel"):
             formant_filter(buf, vowel="x")
+        assert buf.data.shape == (1, FRAMES)  # input unchanged
 
 
 class TestPSOLAPython:
@@ -532,3 +557,346 @@ class TestMinBLEPPython:
     def test_pulse_width(self):
         buf = minblep(FRAMES, freq=440.0, waveform="square", pulse_width=0.25)
         assert buf.data.shape == (1, FRAMES)
+        assert buf.data.dtype == np.float32
+        assert rms(buf.data) > 0.1
+
+
+# ===========================================================================
+# C++ Binding Tests -- Ping-Pong Delay
+# ===========================================================================
+
+
+class TestPingPongDelay:
+    def test_construction_and_init(self):
+        ppd = fx.PingPongDelay()
+        ppd.init(44100.0)
+        assert ppd.delay_ms == pytest.approx(500.0)
+
+    def test_set_params(self):
+        ppd = fx.PingPongDelay()
+        ppd.init(44100.0)
+        ppd.delay_ms = 250.0
+        ppd.feedback = 0.3
+        ppd.mix = 0.7
+        assert ppd.delay_ms == pytest.approx(250.0)
+        assert ppd.feedback == pytest.approx(0.3)
+        assert ppd.mix == pytest.approx(0.7)
+
+    def test_tick_returns_pair(self):
+        ppd = fx.PingPongDelay()
+        ppd.init(44100.0)
+        result = ppd.tick(1.0, 0.0)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_process_stereo(self):
+        ppd = fx.PingPongDelay()
+        ppd.init(SR)
+        ppd.delay_ms = 100.0
+        ppd.feedback = 0.3
+        ppd.mix = 0.5
+        stereo = np.zeros((2, FRAMES), dtype=np.float32)
+        stereo[0] = make_impulse()
+        out = ppd.process(stereo)
+        assert out.shape == (2, FRAMES)
+
+    def test_impulse_produces_ping_pong(self):
+        ppd = fx.PingPongDelay()
+        ppd.init(SR)
+        ppd.delay_ms = 10.0  # short delay so it fits in FRAMES
+        ppd.feedback = 0.5
+        ppd.mix = 1.0
+        stereo = np.zeros((2, FRAMES), dtype=np.float32)
+        stereo[0, 0] = 1.0  # impulse on left only
+        out = ppd.process(stereo)
+        # Crossed feedback: impulse in L delay -> fb_l set after 1 delay period
+        # -> written into R delay -> appears in R after 2 delay periods
+        delay_samples = int(SR * 0.01)
+        assert np.max(np.abs(out[1, 2 * delay_samples:])) > 0.01
+
+    def test_reset(self):
+        ppd = fx.PingPongDelay()
+        ppd.init(SR)
+        ppd.delay_ms = 50.0
+        stereo = np.zeros((2, FRAMES), dtype=np.float32)
+        stereo[0] = make_impulse()
+        ppd.process(stereo)
+        ppd.reset()
+        silence = np.zeros((2, 256), dtype=np.float32)
+        out = ppd.process(silence)
+        assert rms(out) < 1e-6
+
+    def test_feedback_clamped(self):
+        ppd = fx.PingPongDelay()
+        ppd.init(SR)
+        ppd.feedback = 2.0
+        assert ppd.feedback == pytest.approx(0.99, abs=1e-5)
+
+    def test_mix_clamped(self):
+        ppd = fx.PingPongDelay()
+        ppd.init(SR)
+        ppd.mix = 1.5
+        assert ppd.mix <= 1.0
+
+
+# ===========================================================================
+# C++ Binding Tests -- Frequency Shifter
+# ===========================================================================
+
+
+class TestFreqShifter:
+    def test_construction_and_init(self):
+        fs = fx.FreqShifter()
+        fs.init(44100.0)
+        assert fs.shift_hz == pytest.approx(0.0)
+
+    def test_set_shift(self):
+        fs = fx.FreqShifter()
+        fs.init(44100.0)
+        fs.shift_hz = 100.0
+        assert fs.shift_hz == pytest.approx(100.0)
+
+    def test_zero_shift_passthrough(self):
+        fs = fx.FreqShifter()
+        fs.init(SR)
+        fs.shift_hz = 0.0
+        x = make_sine(freq=440.0, frames=4096)
+        out = fs.process(x)
+        assert out.shape == x.shape
+        # With zero shift the output should be close to input
+        # (allpass filters introduce phase shift but preserve magnitude)
+        assert rms(out) > 0.5 * rms(x)
+
+    def test_positive_shift_changes_frequency(self):
+        fs = fx.FreqShifter()
+        fs.init(SR)
+        fs.shift_hz = 200.0
+        x = make_sine(freq=440.0, frames=FRAMES * 4)
+        out = fs.process(x)
+        # Peak frequency should be near 640 Hz
+        pf = peak_freq(out, SR)
+        assert abs(pf - 640.0) < 50.0
+
+    def test_negative_shift(self):
+        fs = fx.FreqShifter()
+        fs.init(SR)
+        fs.shift_hz = -200.0
+        x = make_sine(freq=440.0, frames=FRAMES * 4)
+        out = fs.process(x)
+        # Peak frequency should be near 240 Hz
+        pf = peak_freq(out, SR)
+        assert abs(pf - 240.0) < 50.0
+
+    def test_output_shape(self):
+        fs = fx.FreqShifter()
+        fs.init(SR)
+        fs.shift_hz = 50.0
+        x = make_sine(frames=1024)
+        out = fs.process(x)
+        assert out.shape == (1024,)
+
+    def test_reset(self):
+        fs = fx.FreqShifter()
+        fs.init(SR)
+        fs.shift_hz = 100.0
+        x = make_sine(frames=512)
+        out1 = fs.process(x)
+        fs.reset()
+        out2 = fs.process(x)
+        assert out1.shape == x.shape
+        assert out1.dtype == np.float32
+        np.testing.assert_allclose(out1, out2, atol=1e-5)
+
+    def test_tick_matches_process(self):
+        fs1 = fx.FreqShifter()
+        fs2 = fx.FreqShifter()
+        fs1.init(SR)
+        fs2.init(SR)
+        fs1.shift_hz = 100.0
+        fs2.shift_hz = 100.0
+        x = make_sine(frames=64)
+        ticked = np.array([fs1.tick(float(s)) for s in x], dtype=np.float32)
+        processed = fs2.process(x)
+        assert ticked.shape == processed.shape
+        assert np.all(np.isfinite(ticked))
+        np.testing.assert_allclose(ticked, processed, atol=1e-6)
+
+
+# ===========================================================================
+# C++ Binding Tests -- Ring Modulator
+# ===========================================================================
+
+
+class TestRingMod:
+    def test_construction_and_init(self):
+        rm = fx.RingMod()
+        rm.init(44100.0)
+        assert rm.carrier_freq == pytest.approx(440.0)
+
+    def test_set_params(self):
+        rm = fx.RingMod()
+        rm.init(SR)
+        rm.carrier_freq = 200.0
+        rm.lfo_freq = 5.0
+        rm.lfo_width = 10.0
+        rm.mix = 0.8
+        assert rm.carrier_freq == pytest.approx(200.0)
+        assert rm.lfo_freq == pytest.approx(5.0)
+        assert rm.lfo_width == pytest.approx(10.0)
+        assert rm.mix == pytest.approx(0.8)
+
+    def test_produces_sum_and_difference_tones(self):
+        rm = fx.RingMod()
+        rm.init(SR)
+        rm.carrier_freq = 300.0
+        rm.mix = 1.0
+        x = make_sine(freq=440.0, frames=FRAMES * 4)
+        out = rm.process(x)
+        # Ring mod of 440 Hz * 300 Hz carrier should produce
+        # 140 Hz (difference) and 740 Hz (sum)
+        spectrum = np.abs(np.fft.rfft(out * np.hanning(len(out))))
+        freqs = np.fft.rfftfreq(len(out), 1.0 / SR)
+        # Check sum tone near 740 Hz
+        idx_740 = np.argmin(np.abs(freqs - 740.0))
+        # Check difference tone near 140 Hz
+        idx_140 = np.argmin(np.abs(freqs - 140.0))
+        assert spectrum[idx_740] > 0.1 * np.max(spectrum)
+        assert spectrum[idx_140] > 0.1 * np.max(spectrum)
+
+    def test_dry_mix(self):
+        rm = fx.RingMod()
+        rm.init(SR)
+        rm.carrier_freq = 300.0
+        rm.mix = 0.0
+        x = make_sine(freq=440.0, frames=1024)
+        out = rm.process(x)
+        assert out.shape == x.shape
+        assert out.dtype == np.float32
+        # With mix=0, output should be the dry signal
+        np.testing.assert_allclose(out, x, atol=1e-5)
+
+    def test_silence_produces_silence(self):
+        rm = fx.RingMod()
+        rm.init(SR)
+        x = np.zeros(FRAMES, dtype=np.float32)
+        out = rm.process(x)
+        assert rms(out) < 1e-6
+
+    def test_output_shape(self):
+        rm = fx.RingMod()
+        rm.init(SR)
+        x = make_sine(frames=1024)
+        out = rm.process(x)
+        assert out.shape == (1024,)
+
+    def test_reset(self):
+        rm = fx.RingMod()
+        rm.init(SR)
+        rm.carrier_freq = 300.0
+        x = make_sine(frames=512)
+        out1 = rm.process(x)
+        rm.reset()
+        out2 = rm.process(x)
+        assert out1.shape == x.shape
+        assert out1.dtype == np.float32
+        np.testing.assert_allclose(out1, out2, atol=1e-5)
+
+    def test_tick_matches_process(self):
+        rm1 = fx.RingMod()
+        rm2 = fx.RingMod()
+        rm1.init(SR)
+        rm2.init(SR)
+        rm1.carrier_freq = 300.0
+        rm2.carrier_freq = 300.0
+        x = make_sine(frames=64)
+        ticked = np.array([rm1.tick(float(s)) for s in x], dtype=np.float32)
+        processed = rm2.process(x)
+        assert ticked.shape == processed.shape
+        assert np.all(np.isfinite(ticked))
+        np.testing.assert_allclose(ticked, processed, atol=1e-6)
+
+    def test_lfo_modulation(self):
+        rm = fx.RingMod()
+        rm.init(SR)
+        rm.carrier_freq = 300.0
+        rm.lfo_freq = 5.0
+        rm.lfo_width = 50.0
+        rm.mix = 1.0
+        x = make_sine(freq=440.0, frames=FRAMES)
+        out = rm.process(x)
+        # Should produce output with energy
+        assert rms(out) > 0.1
+
+
+# ===========================================================================
+# Python API Tests -- New Effects
+# ===========================================================================
+
+
+class TestPingPongDelayPython:
+    def test_mono_input(self):
+        buf = make_buf(make_impulse())
+        out = ping_pong_delay(buf, delay_ms=100.0)
+        assert out.data.shape[0] == 2  # stereo output
+        assert out.data.shape[1] == FRAMES
+
+    def test_stereo_input(self):
+        data = np.stack([make_impulse(), np.zeros(FRAMES, dtype=np.float32)])
+        buf = AudioBuffer(data, sample_rate=SR)
+        out = ping_pong_delay(buf, delay_ms=100.0, feedback=0.3)
+        assert out.data.shape == (2, FRAMES)
+
+    def test_feedback_and_mix(self):
+        buf = make_buf(make_impulse())
+        out = ping_pong_delay(buf, delay_ms=50.0, feedback=0.5, mix=0.8)
+        assert out.data.shape[0] == 2
+
+    def test_multichannel_rejected(self):
+        data = np.zeros((3, FRAMES), dtype=np.float32)
+        buf = AudioBuffer(data, sample_rate=SR)
+        with pytest.raises(ValueError, match="mono or stereo"):
+            ping_pong_delay(buf)
+        assert buf.channels == 3  # input unchanged
+
+
+class TestFreqShiftPython:
+    def test_basic(self):
+        buf = make_buf(make_sine(freq=440.0))
+        out = freq_shift(buf, shift_hz=100.0)
+        assert out.data.shape == buf.data.shape
+
+    def test_negative_shift(self):
+        buf = make_buf(make_sine(freq=440.0))
+        out = freq_shift(buf, shift_hz=-100.0)
+        assert out.data.shape == buf.data.shape
+        assert rms(out.data) > 0.1
+
+    def test_stereo(self):
+        data = np.stack([make_sine(freq=440.0), make_sine(freq=880.0)])
+        buf = AudioBuffer(data, sample_rate=SR)
+        out = freq_shift(buf, shift_hz=50.0)
+        assert out.data.shape == (2, FRAMES)
+
+
+class TestRingModPython:
+    def test_basic(self):
+        buf = make_buf(make_sine(freq=440.0))
+        out = ring_mod(buf, carrier_freq=300.0)
+        assert out.data.shape == buf.data.shape
+        assert rms(out.data) > 0.1
+
+    def test_with_lfo(self):
+        buf = make_buf(make_sine(freq=440.0))
+        out = ring_mod(buf, carrier_freq=300.0, lfo_freq=5.0, lfo_width=20.0)
+        assert out.data.shape == buf.data.shape
+
+    def test_mix(self):
+        buf = make_buf(make_sine(freq=440.0))
+        out = ring_mod(buf, carrier_freq=300.0, mix=0.5)
+        assert out.data.shape == buf.data.shape
+
+    def test_stereo(self):
+        data = np.stack([make_sine(freq=440.0), make_sine(freq=880.0)])
+        buf = AudioBuffer(data, sample_rate=SR)
+        out = ring_mod(buf, carrier_freq=300.0)
+        assert out.data.shape == (2, FRAMES)

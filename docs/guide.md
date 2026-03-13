@@ -409,6 +409,9 @@ Higher-level effects built by combining multiple primitives.
 - **Exciter** -- highpass filter + saturation + mix with dry. Adds brightness and presence.
 - **De-esser** -- sidechain compressor triggered by a bandpass around sibilant frequencies (typically 4--8 kHz).
 - **Stereo delay** -- independent left/right delays with optional ping-pong routing.
+- **Ping-pong delay** -- stereo delay with crossed feedback (signal bounces between L/R channels). Uses C++ backend with linear interpolation.
+- **Frequency shifter** -- Bode-style single-sideband frequency shifter using allpass Hilbert transform approximation. Shifts all frequencies by a fixed Hz amount (does not preserve harmonic relationships, unlike pitch shifting).
+- **Ring modulator** -- multiplies input by a sine carrier oscillator, producing sum and difference tones. Optional LFO modulates the carrier frequency for vibrato/wobble effects.
 - **Formant filter** -- 3 cascaded bandpass biquads tuned to vowel formant frequencies (A/E/I/O/U) with interpolation.
 - **PSOLA pitch shift** -- pitch-synchronous overlap-add. Detects pitch via autocorrelation, then time-aligns and overlaps grains to shift pitch without changing duration. Best for monophonic voiced signals (speech, solo instruments).
 - **Master** -- mastering chain: DC block, EQ, compression, limiting, loudness normalization.

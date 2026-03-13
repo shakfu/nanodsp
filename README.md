@@ -13,7 +13,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 | [HISSTools Library](https://github.com/AlexHarker/HISSTools_Library) | BSD-3 | Convolution, spectral processing, statistical analysis, windows |
 | [CHOC](https://github.com/Tracktion/choc) | ISC | FLAC codec (read/write) |
 | [GrainflowLib](https://github.com/composingcap/GrainflowLib) | MIT | Granular synthesis (grain collections, panning, recording, phasor) |
-| [fxdsp](https://github.com/hamiltonkibbe/FXDsp) | MIT | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators |
+| [fxdsp](https://github.com/hamiltonkibbe/FXDsp) | MIT | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators, ping-pong delay, frequency shifter, ring modulator |
 | [DspFilters](https://github.com/vinniefalco/DSPFilters) | MIT | Multi-order IIR filter design (Butterworth, Chebyshev I/II, Elliptic, Bessel) |
 | [vafilters](https://github.com/music-dsp-collection/va-filters) | MIT | Virtual analog filters (Moog, Diode, Korg35, Oberheim) via Faust |
 | [PolyBLEP et al.](https://github.com/martinfinke/PolyBLEP) | MIT | Band-limited oscillators (PolyBLEP, BLIT, DPW, MinBLEP, wavetable) |
@@ -275,7 +275,7 @@ output, error = ops.lms_filter(buf, ref, filter_len=32, step_size=0.01)
 
 ### `nanodsp.effects` -- Filters, effects, dynamics, mastering
 
-70 functions covering signalsmith biquad filters, DaisySP effects/filters/dynamics, composed effects, reverbs, mastering chains, STK effects, automatic gain control, antialiased waveshaping, classic reverbs, formant filtering, PSOLA pitch shifting, and multi-order IIR filters.
+79 functions covering signalsmith biquad filters, DaisySP effects/filters/dynamics, composed effects, reverbs, mastering chains, STK effects, automatic gain control, antialiased waveshaping, classic reverbs, formant filtering, PSOLA pitch shifting, multi-order IIR filters, shimmer reverb, tape echo, lo-fi, telephone, gated reverb, and auto-pan.
 
 #### Biquad filters (signalsmith)
 
@@ -349,6 +349,9 @@ effects.parallel_compress(buf, mix=0.5, threshold=-24.0, ratio=8.0)
 effects.noise_gate(buf, threshold_db=-40.0)
 effects.stereo_delay(buf, delay_l=0.25, delay_r=0.375, feedback=0.4, ping_pong=True)
 effects.multiband_compress(buf, crossovers=[200.0, 2000.0, 8000.0])
+effects.ping_pong_delay(buf, delay_ms=375.0, feedback=0.5, mix=0.5)
+effects.freq_shift(buf, shift_hz=100.0)
+effects.ring_mod(buf, carrier_freq=300.0)
 ```
 
 #### Reverb
@@ -399,6 +402,14 @@ effects.moorer_reverb(buf, feedback=0.7, diffusion=0.7, mod_depth=0.1)
 ```python
 effects.formant_filter(buf, vowel="a")           # 'a','e','i','o','u'
 effects.psola_pitch_shift(buf, semitones=5.0)     # pitch-synchronous overlap-add
+```
+
+#### Ping-pong delay, frequency shifter, ring modulator (fxdsp)
+
+```python
+effects.ping_pong_delay(buf, delay_ms=375.0, feedback=0.5, mix=0.5)
+effects.freq_shift(buf, shift_hz=100.0)           # Bode-style frequency shifting
+effects.ring_mod(buf, carrier_freq=300.0, mix=1.0) # ring modulation
 ```
 
 #### Multi-order IIR filters (DspFilters)
@@ -613,7 +624,7 @@ Direct access to the C++ extension module with 17 submodules. All high-level Pyt
 | `grainflow` | GrainflowLib | `GfBuffer`, `GrainCollection`, `Panner`, `Recorder`, `Phasor`, 37 enum constants |
 | `vafilters` | vafilters (Faust) | 6 virtual analog filters (Moog ladder, Diode ladder, Korg35 LP/HP, Oberheim multi-mode) |
 | `bloscillators` | PolyBLEP et al. | 5 band-limited oscillator algorithms (PolyBLEP, BLIT, DPW, MinBLEP, wavetable) |
-| `fxdsp` | fxdsp | Antialiased clippers/wavefolder, Schroeder/Moorer reverbs, formant filter, PSOLA, MinBLEP oscillator |
+| `fxdsp` | fxdsp | Antialiased clippers/wavefolder, Schroeder/Moorer reverbs, formant filter, PSOLA, MinBLEP oscillator, ping-pong delay, frequency shifter, ring modulator |
 | `iirdesign` | DspFilters | Multi-order IIR filter design (Butterworth, Chebyshev I/II, Elliptic, Bessel, orders 1-16) |
 
 ```python
@@ -722,14 +733,14 @@ uv run python demos/demo_analysis.py demos/s01.wav   # prints to stdout
 | `demo_pitch.py` | 10 | Time-domain and spectral pitch shifting |
 | `demo_spectral.py` | 12 | Time stretch, phase lock, spectral gate, tilt EQ, freeze |
 | `demo_daisysp_filters.py` | 21 | SVF, ladder, moog, tone, modal, comb filters |
-| `demo_composed.py` | 13 | Autowah, SR reduce, DC block, exciter, de-esser, vocal chain, mastering, STK chorus |
+| `demo_composed.py` | 28 | Autowah, SR reduce, DC block, exciter, de-esser, vocal chain, mastering, STK chorus, shimmer reverb, tape echo, lo-fi, telephone, gated reverb, auto-pan |
 | `demo_spectral_extra.py` | 8 | Spectral denoise, EQ match, spectral morph |
 | `demo_ops.py` | 29 | Delay, vibrato, convolution, envelopes, fades, panning, stereo widening, crossfade |
 | `demo_resample.py` | 6 | Madronalib and FFT resampling at 22k/48k/96k |
 | `demo_synthesis.py` | 44 | Oscillators, FM, noise, drums, physical modeling, STK instruments (no input file) |
 | `demo_analysis.py` | -- | Loudness, spectral features, pitch, onsets, chromagram (stdout only) |
 | `demo_grainflow.py` | 7 | Granular clouds (basic, dense), pitch shift, sparse stochastic, stereo panning, recorder |
-| `demo_fxdsp.py` | 28 | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators |
+| `demo_fxdsp.py` | 38 | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators, ping-pong delay, frequency shifter, ring modulator |
 | `demo_iir_filters.py` | 23 | Butterworth, Chebyshev I/II, Elliptic, Bessel filters at various orders |
 
 File-processing scripts share the same interface:
@@ -751,7 +762,7 @@ options:
 
 ```bash
 make build    # rebuild extension after C++ changes
-make test     # run 1431 tests
+make test     # run 1522 tests
 make demos    # run all 18 demo scripts
 make qa       # test + lint + typecheck + format
 make coverage # tests with coverage report

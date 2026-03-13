@@ -115,6 +115,7 @@ class TestChannelAccess:
     def test_channel_method(self):
         buf = AudioBuffer.zeros(3, 10)
         npt.assert_array_equal(buf.channel(1), buf[1])
+        assert buf.channel(1).shape == (10,)
 
     def test_mono_property(self):
         buf = AudioBuffer.sine(100, channels=1, frames=256)
@@ -134,6 +135,7 @@ class TestChannelAccess:
     def test_tuple_index(self):
         buf = AudioBuffer(np.arange(20, dtype=np.float32).reshape(2, 10))
         view = buf[0, 2:5]
+        assert view.shape == (3,)
         npt.assert_array_equal(view, [2, 3, 4])
 
 
@@ -221,6 +223,7 @@ class TestFactoryMethods:
     def test_noise_seed_reproducible(self):
         a = AudioBuffer.noise(seed=7)
         b = AudioBuffer.noise(seed=7)
+        assert a.data.shape == b.data.shape
         npt.assert_array_equal(a.data, b.data)
 
     def test_from_numpy(self):
@@ -246,16 +249,19 @@ class TestChannelOps:
     def test_to_mono_left(self):
         arr = np.array([[1.0], [2.0]], dtype=np.float32)
         m = AudioBuffer(arr).to_mono("left")
+        assert m.channels == 1
         npt.assert_allclose(m[0], [1.0])
 
     def test_to_mono_right(self):
         arr = np.array([[1.0], [2.0]], dtype=np.float32)
         m = AudioBuffer(arr).to_mono("right")
+        assert m.channels == 1
         npt.assert_allclose(m[0], [2.0])
 
     def test_to_mono_sum(self):
         arr = np.array([[1.0], [2.0]], dtype=np.float32)
         m = AudioBuffer(arr).to_mono("sum")
+        assert m.channels == 1
         npt.assert_allclose(m[0], [3.0])
 
     def test_to_channels_from_mono(self):
@@ -298,27 +304,33 @@ class TestArithmetic:
     def test_scalar_add(self):
         buf = AudioBuffer.ones(1, 4)
         result = buf + 2.0
+        assert isinstance(result, AudioBuffer)
         npt.assert_allclose(result[0], [3.0, 3.0, 3.0, 3.0])
 
     def test_scalar_sub(self):
         buf = AudioBuffer.ones(1, 4)
         result = buf - 0.5
+        assert isinstance(result, AudioBuffer)
         npt.assert_allclose(result[0], [0.5, 0.5, 0.5, 0.5])
 
     def test_scalar_mul(self):
         buf = AudioBuffer.ones(1, 4)
         result = buf * 3.0
+        assert isinstance(result, AudioBuffer)
         npt.assert_allclose(result[0], [3.0, 3.0, 3.0, 3.0])
 
     def test_scalar_div(self):
         buf = AudioBuffer.ones(1, 4) * 6.0
         result = buf / 2.0
+        assert isinstance(result, AudioBuffer)
         npt.assert_allclose(result[0], [3.0, 3.0, 3.0, 3.0])
 
     def test_buffer_add(self):
         a = AudioBuffer.ones(2, 4)
         b = AudioBuffer.ones(2, 4) * 2.0
         result = a + b
+        assert result.channels == 2
+        assert result.frames == 4
         npt.assert_allclose(result.data, 3.0)
 
     def test_mono_stereo_broadcast(self):
@@ -337,11 +349,13 @@ class TestArithmetic:
     def test_negation(self):
         buf = AudioBuffer.ones(1, 4)
         neg = -buf
+        assert isinstance(neg, AudioBuffer)
         npt.assert_allclose(neg[0], [-1.0, -1.0, -1.0, -1.0])
 
     def test_gain_db(self):
         buf = AudioBuffer.ones(1, 4)
         boosted = buf.gain_db(20.0)
+        assert isinstance(boosted, AudioBuffer)
         npt.assert_allclose(boosted[0], 10.0, rtol=1e-5)
         cut = buf.gain_db(-20.0)
         npt.assert_allclose(cut[0], 0.1, rtol=1e-5)
@@ -349,16 +363,19 @@ class TestArithmetic:
     def test_radd(self):
         buf = AudioBuffer.ones(1, 4)
         result = 2.0 + buf
+        assert isinstance(result, AudioBuffer)
         npt.assert_allclose(result[0], [3.0, 3.0, 3.0, 3.0])
 
     def test_rmul(self):
         buf = AudioBuffer.ones(1, 4)
         result = 3.0 * buf
+        assert isinstance(result, AudioBuffer)
         npt.assert_allclose(result[0], [3.0, 3.0, 3.0, 3.0])
 
     def test_rsub(self):
         buf = AudioBuffer.ones(1, 4)
         result = 5.0 - buf
+        assert isinstance(result, AudioBuffer)
         npt.assert_allclose(result[0], [4.0, 4.0, 4.0, 4.0])
 
 
@@ -432,6 +449,8 @@ class TestPipe:
 
         buf = AudioBuffer.ones(1, 10)
         result = buf.pipe(scale, factor=3.0)
+        assert isinstance(result, AudioBuffer)
+        assert result.frames == 10
         npt.assert_allclose(result.data, 3.0)
 
     def test_args_forwarded(self):
@@ -445,6 +464,8 @@ class TestPipe:
 
         buf = AudioBuffer.zeros(1, 10)
         result = buf.pipe(add_offset, 5.0)
+        assert isinstance(result, AudioBuffer)
+        assert result.frames == 10
         npt.assert_allclose(result.data, 5.0)
 
     def test_type_error_on_non_audiobuffer_return(self):
@@ -466,6 +487,9 @@ class TestPipe:
             .pipe(lambda b: b.gain_db(6.0))
             .pipe(lambda b: b.gain_db(-12.0))
         )
+        assert isinstance(result, AudioBuffer)
+        assert result.channels == 1
+        assert result.frames == 10
         npt.assert_allclose(result.data, buf.data, rtol=1e-5)
 
     def test_integration_with_dsp_functions(self):

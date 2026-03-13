@@ -1,6 +1,7 @@
 """Tests for nanodsp.spectral module (signalsmith STFT)."""
 
 import numpy as np
+import pytest
 from nanodsp._core import spectral
 
 
@@ -8,6 +9,9 @@ class TestSTFTConstruction:
     def test_construction(self):
         stft = spectral.STFT(1, 256, 128)
         assert stft is not None
+        assert isinstance(stft, spectral.STFT)
+        assert stft.window_size() == 256
+        assert stft.interval() == 128
 
     def test_properties(self):
         stft = spectral.STFT(2, 512, 256)
@@ -57,6 +61,7 @@ class TestSTFTAnalyse:
         stft.analyse(inp)
         spec_default = stft.get_spectrum()
         spec_ch0 = stft.get_spectrum_channel(0)
+        assert spec_default.shape == spec_ch0.shape
         np.testing.assert_allclose(spec_default, spec_ch0)
 
     def test_sine_peak_in_spectrum(self):
@@ -78,6 +83,7 @@ class TestSTFTAnalyse:
         stft.reset()
         # After reset, spectrum should be zero
         spec = stft.get_spectrum()
+        assert len(spec) > 0
         np.testing.assert_allclose(np.abs(spec), 0.0, atol=1e-7)
 
 
@@ -88,16 +94,14 @@ class TestSTFTSetSpectrum:
         new_spec = np.ones(bands, dtype=np.complex64) * (1 + 2j)
         stft.set_spectrum_channel(0, new_spec)
         retrieved = stft.get_spectrum_channel(0)
+        assert retrieved.shape == new_spec.shape
         np.testing.assert_allclose(retrieved, new_spec, atol=1e-6)
 
     def test_set_spectrum_wrong_size_raises(self):
         stft = spectral.STFT(1, 256, 128)
         wrong = np.ones(10, dtype=np.complex64)
-        try:
+        with pytest.raises((ValueError, RuntimeError)):
             stft.set_spectrum_channel(0, wrong)
-            assert False, "Should have raised"
-        except (ValueError, RuntimeError):
-            pass
 
     def test_set_and_get_roundtrip(self):
         stft = spectral.STFT(2, 256, 128)
@@ -108,6 +112,7 @@ class TestSTFTSetSpectrum:
         )
         stft.set_spectrum_channel(1, spec)
         retrieved = stft.get_spectrum_channel(1)
+        assert retrieved.shape == spec.shape
         np.testing.assert_allclose(retrieved, spec, atol=1e-6)
 
 

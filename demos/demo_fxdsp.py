@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Demo: FX DSP algorithms -- antialiased waveshaping, reverbs, formant, PSOLA, minBLEP.
+"""Demo: FX DSP algorithms -- waveshaping, reverbs, formant, PSOLA, minBLEP, ping-pong delay, freq shift, ring mod.
 
-Applies waveshaping, reverb, and formant effects to an input file.
+Applies waveshaping, reverb, formant, ping-pong delay, frequency shifting,
+and ring modulation effects to an input file.
 Also generates minBLEP oscillator waveforms (no input needed for those).
 """
 
@@ -11,7 +12,13 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects.composed import formant_filter, psola_pitch_shift
+from nanodsp.effects.composed import (
+    formant_filter,
+    freq_shift,
+    ping_pong_delay,
+    psola_pitch_shift,
+    ring_mod,
+)
 from nanodsp.effects.reverb import schroeder_reverb, moorer_reverb
 from nanodsp.effects.saturation import aa_hard_clip, aa_soft_clip, aa_wavefold
 from nanodsp.synthesis import minblep
@@ -70,6 +77,19 @@ def main():
         ("psola-down-3", lambda b: psola_pitch_shift(b, semitones=-3.0)),
         ("psola-down-7", lambda b: psola_pitch_shift(b, semitones=-7.0)),
         ("psola-down-12", lambda b: psola_pitch_shift(b, semitones=-12.0)),
+        # --- Ping-pong delay ---
+        ("pingpong-default", lambda b: ping_pong_delay(b, delay_ms=375.0, feedback=0.5, mix=0.5)),
+        ("pingpong-short", lambda b: ping_pong_delay(b, delay_ms=125.0, feedback=0.3, mix=0.4)),
+        ("pingpong-long", lambda b: ping_pong_delay(b, delay_ms=750.0, feedback=0.6, mix=0.5)),
+        # --- Frequency shifter ---
+        ("freqshift-up50", lambda b: freq_shift(b, shift_hz=50.0)),
+        ("freqshift-up200", lambda b: freq_shift(b, shift_hz=200.0)),
+        ("freqshift-down100", lambda b: freq_shift(b, shift_hz=-100.0)),
+        # --- Ring modulator ---
+        ("ringmod-300hz", lambda b: ring_mod(b, carrier_freq=300.0)),
+        ("ringmod-100hz", lambda b: ring_mod(b, carrier_freq=100.0)),
+        ("ringmod-lfo", lambda b: ring_mod(b, carrier_freq=300.0, lfo_freq=3.0, lfo_width=30.0)),
+        ("ringmod-subtle", lambda b: ring_mod(b, carrier_freq=200.0, mix=0.4)),
     ]
 
     for label, fn in fx_demos:

@@ -8,6 +8,7 @@ class TestHadamard:
     def test_construction(self):
         h = mix.Hadamard(4)
         assert h is not None
+        assert isinstance(h, mix.Hadamard)
 
     def test_in_place_shape(self):
         h = mix.Hadamard(4)
@@ -22,6 +23,7 @@ class TestHadamard:
         inp = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
         once = h.in_place(inp)
         twice = h.in_place(once)
+        assert twice.shape == inp.shape
         np.testing.assert_allclose(twice, inp, atol=1e-5)
 
     def test_scaling_factor(self):
@@ -38,6 +40,7 @@ class TestHadamard:
         out = h.in_place(inp)
         in_energy = np.sum(inp**2)
         out_energy = np.sum(out**2)
+        assert out.shape == (8,)
         # Since it's a scaled orthogonal matrix, energy scales by scaling_factor^2 * N
         # For orthogonal: ||Hx||^2 = ||x||^2
         np.testing.assert_allclose(out_energy, in_energy, rtol=1e-4)
@@ -47,6 +50,7 @@ class TestHadamard:
         inp = np.zeros(8, dtype=np.float32)
         inp[0] = 1.0
         out = h.in_place(inp)
+        assert out.shape == (8,)
         # All entries should have equal magnitude
         magnitudes = np.abs(out)
         np.testing.assert_allclose(magnitudes, magnitudes[0], atol=1e-6)
@@ -58,6 +62,7 @@ class TestHadamard:
         inp = np.zeros(n, dtype=np.float32)
         inp[0] = 1.0
         out = h.in_place(inp)
+        assert out.shape == (n,)
         # All outputs should have same magnitude
         mags = np.abs(out)
         np.testing.assert_allclose(mags, mags[0], atol=1e-6)
@@ -67,6 +72,7 @@ class TestHouseholder:
     def test_construction(self):
         h = mix.Householder(4)
         assert h is not None
+        assert isinstance(h, mix.Householder)
 
     def test_in_place_shape(self):
         h = mix.Householder(4)
@@ -81,6 +87,7 @@ class TestHouseholder:
         inp = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
         once = h.in_place(inp)
         twice = h.in_place(once)
+        assert twice.shape == inp.shape
         np.testing.assert_allclose(twice, inp, atol=1e-5)
 
     def test_energy_preservation(self):

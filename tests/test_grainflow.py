@@ -54,6 +54,7 @@ class TestGfBuffer:
         data = np.ones((1, 256), dtype=np.float32) * 0.5
         buf.set_data(data)
         out = buf.get_data()
+        assert out.shape == (1, 256)
         np.testing.assert_allclose(out, data, atol=1e-6)
 
     def test_metadata_after_set_data(self):
@@ -73,6 +74,7 @@ class TestPhasor:
     def test_construct(self):
         p = gf.Phasor(1.0, 48000)
         assert p is not None
+        assert isinstance(p, gf.Phasor)
 
     def test_perform_output_shape(self):
         p = gf.Phasor(1.0, 48000)
@@ -145,11 +147,17 @@ class TestGrainCollection:
         gc = gf.GrainCollection(4, 48000)
         buf = make_sine_buffer()
         gc.set_buffer(buf, gf.BUF_BUFFER, 0)
+        # Buffer should be set without error; verify grain collection still valid
+        assert gc.grains == 4
+        assert gc.active_grains == 4
 
     def test_set_buffer_str(self):
         gc = gf.GrainCollection(4, 48000)
         buf = make_sine_buffer()
         gc.set_buffer_str(buf, "buffer", 0)
+        # Buffer should be set without error; verify grain collection still valid
+        assert gc.grains == 4
+        assert gc.active_grains == 4
 
     def test_param_set_get(self):
         gc = gf.GrainCollection(4, 48000)
@@ -247,14 +255,17 @@ class TestPanner:
     def test_construct_stereo(self):
         p = gf.Panner(4, 2, gf.PAN_STEREO)
         assert p is not None
+        assert isinstance(p, gf.Panner)
 
     def test_construct_bipolar(self):
         p = gf.Panner(4, 2, gf.PAN_BIPOLAR)
         assert p is not None
+        assert isinstance(p, gf.Panner)
 
     def test_construct_unipolar(self):
         p = gf.Panner(4, 2, gf.PAN_UNIPOLAR)
         assert p is not None
+        assert isinstance(p, gf.Panner)
 
     def test_pan_position_property(self):
         p = gf.Panner(4, 2, gf.PAN_STEREO)
@@ -288,10 +299,15 @@ class TestRecorder:
     def test_construct(self):
         r = gf.Recorder(48000)
         assert r is not None
+        assert isinstance(r, gf.Recorder)
 
     def test_set_target(self):
         r = gf.Recorder(48000)
         r.set_target(4096, 1, 48000)
+        # After setting target, buffer data should be accessible
+        data = r.get_buffer_data()
+        assert data.shape == (1, 4096)
+        assert data.dtype == np.float32
 
     def test_properties(self):
         r = gf.Recorder(48000)

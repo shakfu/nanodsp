@@ -51,6 +51,7 @@ class TestComplexFFT:
         inp = np.zeros(n, dtype=np.complex64)
         inp[0] = 1.0
         out = f.fft(inp)
+        assert out.shape == (n,)
         # Impulse FFT should have magnitude ~1 at all bins
         magnitudes = np.abs(out)
         np.testing.assert_allclose(magnitudes, 1.0, atol=1e-5)
@@ -73,6 +74,7 @@ class TestComplexFFT:
         )
         spectrum = f.fft(inp)
         recovered = f.ifft(spectrum)
+        assert recovered.shape == inp.shape
         # IFFT is unscaled, so result = inp * N
         np.testing.assert_allclose(recovered / n, inp, atol=1e-4)
 
@@ -147,6 +149,7 @@ class TestRealFFT:
         inp[0] = 1.0
         out = rfft.fft(inp)
         magnitudes = np.abs(out)
+        assert magnitudes.shape == (n // 2,)
         # signalsmith's modified RealFFT scales DC bin by sqrt(2)
         np.testing.assert_allclose(magnitudes[0], np.sqrt(2), atol=1e-5)
         np.testing.assert_allclose(magnitudes[1:], 1.0, atol=1e-5)

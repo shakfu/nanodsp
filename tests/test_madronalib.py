@@ -59,6 +59,7 @@ class TestFDN4:
     def test_construction(self):
         fdn = ml.reverbs.FDN4()
         assert fdn is not None
+        assert isinstance(fdn, ml.reverbs.FDN4)
 
     def test_stereo_output_shape(self):
         fdn = ml.reverbs.FDN4()
@@ -146,6 +147,7 @@ class TestPitchbendableDelay:
     def test_construction(self):
         d = ml.delays.PitchbendableDelay()
         assert d is not None
+        assert isinstance(d, ml.delays.PitchbendableDelay)
 
     def test_process_shape(self):
         d = ml.delays.PitchbendableDelay()
@@ -177,6 +179,12 @@ class TestPitchbendableDelay:
         d = ml.delays.PitchbendableDelay()
         d.set_max_delay_in_samples(500.0)
         d.clear()
+        # After clear, processing should produce zeros for zero input
+        inp = np.zeros(128, dtype=np.float32)
+        delays = np.ones(128, dtype=np.float32) * 50.0
+        out = d.process(inp, delays)
+        assert out.shape == (128,)
+        assert out.dtype == np.float32
 
 
 # ============================================================================
@@ -206,6 +214,11 @@ class TestDownsampler:
     def test_clear(self):
         ds = ml.resampling.Downsampler(1)
         ds.clear()
+        # After clear, processing should still work
+        inp = np.ones(128, dtype=np.float32)
+        out = ds.process(inp)
+        assert out.shape == (64,)
+        assert out.dtype == np.float32
 
 
 # ============================================================================
@@ -235,6 +248,11 @@ class TestUpsampler:
     def test_clear(self):
         us = ml.resampling.Upsampler(1)
         us.clear()
+        # After clear, processing should still work
+        inp = np.ones(64, dtype=np.float32)
+        out = us.process(inp, 1)
+        assert out.shape == (128,)
+        assert out.dtype == np.float32
 
 
 # ============================================================================
@@ -246,6 +264,7 @@ class TestOneShotGen:
     def test_construction(self):
         g = ml.generators.OneShotGen()
         assert g is not None
+        assert isinstance(g, ml.generators.OneShotGen)
 
     def test_trigger_and_ramp(self):
         g = ml.generators.OneShotGen()
@@ -282,6 +301,7 @@ class TestLinearGlide:
     def test_construction(self):
         g = ml.generators.LinearGlide()
         assert g is not None
+        assert isinstance(g, ml.generators.LinearGlide)
 
     def test_glide_to_target(self):
         g = ml.generators.LinearGlide()
@@ -302,6 +322,11 @@ class TestLinearGlide:
     def test_clear(self):
         g = ml.generators.LinearGlide()
         g.clear()
+        # After clear, glide should start from zero
+        g.set_glide_time_in_samples(1.0)
+        out = g.process(0.0, 64)
+        assert out.shape == (64,)
+        assert out.dtype == np.float32
 
 
 # ============================================================================
@@ -313,6 +338,7 @@ class TestSampleAccurateLinearGlide:
     def test_construction(self):
         g = ml.generators.SampleAccurateLinearGlide()
         assert g is not None
+        assert isinstance(g, ml.generators.SampleAccurateLinearGlide)
 
     def test_glide(self):
         g = ml.generators.SampleAccurateLinearGlide()
@@ -331,6 +357,11 @@ class TestSampleAccurateLinearGlide:
     def test_clear(self):
         g = ml.generators.SampleAccurateLinearGlide()
         g.clear()
+        # After clear, should still be usable
+        g.set_glide_time_in_samples(5.0)
+        out = g.process(0.0, 10)
+        assert out.shape == (10,)
+        assert out.dtype == np.float32
 
 
 # ============================================================================
@@ -342,6 +373,7 @@ class TestTempoLock:
     def test_construction(self):
         tl = ml.generators.TempoLock()
         assert tl is not None
+        assert isinstance(tl, ml.generators.TempoLock)
 
     def test_process_shape(self):
         tl = ml.generators.TempoLock()
@@ -353,6 +385,11 @@ class TestTempoLock:
     def test_clear(self):
         tl = ml.generators.TempoLock()
         tl.clear()
+        # After clear, processing should still work
+        phasor = np.linspace(0, 1, 128, endpoint=False, dtype=np.float32)
+        out = tl.process(phasor, 1.0, 1.0 / 44100.0)
+        assert out.shape == (128,)
+        assert out.dtype == np.float32
 
 
 # ============================================================================

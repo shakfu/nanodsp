@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5]
+
+### Added
+
+- **Ping-pong delay** (`nanodsp._core.fxdsp.PingPongDelay`, `nanodsp.effects.composed.ping_pong_delay`) -- stereo ping-pong delay with crossed feedback and linear interpolation. Based on FX/KHPingPongDelay.hpp, rewritten as clean header.
+  - Configurable delay time, feedback (-0.99 to 0.99), and dry/wet mix
+  - Stereo processing: [2, N] input/output with crossed feedback paths
+  - Accepts mono (duplicated to stereo) or stereo input
+
+- **Frequency shifter** (`nanodsp._core.fxdsp.FreqShifter`, `nanodsp.effects.composed.freq_shift`) -- Bode-style frequency shifter using allpass Hilbert transform approximation. Based on FX/BodeShifter.hpp, rewritten from scratch (original had bugs).
+  - 4-stage allpass pair (Wardle coefficients) for wideband 90-degree phase split
+  - Quadrature oscillator for single-sideband modulation
+  - Positive or negative shift in Hz; does not preserve harmonic relationships
+
+- **Ring modulator** (`nanodsp._core.fxdsp.RingMod`, `nanodsp.effects.composed.ring_mod`) -- ring modulation with carrier sine oscillator and optional LFO frequency modulation. Based on FX/AudioEffectRingMod.hpp, rewritten as clean header.
+  - Configurable carrier frequency, dry/wet mix
+  - Optional LFO with rate and depth controls for carrier FM
+  - Produces sum and difference tones (e.g., 440 Hz input * 300 Hz carrier = 140 Hz + 740 Hz)
+
+- 40 new tests for ping-pong delay, frequency shifter, and ring modulator (C++ bindings + Python API)
+
+- **6 derivative composed effects** that combine existing primitives:
+  - `shimmer_reverb` -- FDN reverb + PSOLA pitch shift blended as a shimmer layer (ambient/post-rock)
+  - `tape_echo` -- multi-tap delay with progressive lowpass filtering and tape saturation per repeat
+  - `lo_fi` -- bitcrush + sample-rate reduction + tape saturation + lowpass chain
+  - `telephone` -- tight bandpass (300-3400 Hz) + hard saturation (codec/radio simulation)
+  - `gated_reverb` -- FDN reverb + noise gate for truncated punchy tails (80s production)
+  - `auto_pan` -- sine LFO-driven equal-power stereo panning
+- 34 new tests for the 6 derivative composed effects
+- 15 new demo variants in `demo_composed.py` for the derivative effects
+
+### Changed
+
+- **FDN reverb demo parameters** -- widened mix, decay, and damping spread across presets to make each sound distinctly different (room=dry/damped, plate=bright, cathedral=wet/long/dark)
+
+### Fixed
+
+- **165 pytest-review assertion warnings** -- added explicit `assert` keyword statements to tests that relied solely on `np.testing.assert_*` (not detected by the plugin) or had no assertions at all. Replaced `try/assert False/except` anti-patterns with idiomatic `pytest.raises`. Removed trivial `assert True` statements. All 1522 tests pass with 0 review issues.
+
 ## [0.1.4]
 
 ### Changed
@@ -17,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nanodsp.effects.dynamics` -- compress, limit, noise_gate, agc
   - `nanodsp.effects.saturation` -- saturate, aa_hard_clip, aa_soft_clip, aa_wavefold
   - `nanodsp.effects.reverb` -- FDN reverb (with presets), schroeder_reverb, moorer_reverb, stk_reverb, stk_chorus, stk_echo
-  - `nanodsp.effects.composed` -- exciter, de_esser, parallel_compress, stereo_delay, multiband_compress, formant_filter, psola_pitch_shift, master, vocal_chain
+  - `nanodsp.effects.composed` -- exciter, de_esser, parallel_compress, stereo_delay, ping_pong_delay, freq_shift, ring_mod, multiband_compress, formant_filter, psola_pitch_shift, master, vocal_chain, shimmer_reverb, tape_echo, lo_fi, telephone, gated_reverb, auto_pan
 - **BREAKING: `effects/__init__.py` no longer re-exports** -- import from specific submodules (e.g. `from nanodsp.effects.filters import lowpass` instead of `from nanodsp.effects import lowpass`)
 - **BREAKING: Biquad filter `design` parameter now accepts strings** -- `lowpass(buf, 1000, design="bilinear")` instead of `design=filters.BiquadDesign.bilinear`. Raw enum/int values still accepted for backward compatibility. Valid strings: `"bilinear"`, `"cookbook"`, `"one_sided"`, `"vicanek"`
 - All effects submodules use relative imports internally
@@ -68,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Python wrappers: `polyblep`, `blit_saw`, `blit_square`, `dpw_saw`, `dpw_pulse`
   - 83 tests (`tests/test_bloscillators.py`)
 
-- **FX DSP algorithms** (`nanodsp._core.fxdsp`, `nanodsp.effects`, `nanodsp.synthesis`) -- 6 algorithms from cleaned/rewritten third-party sources
+- **FX DSP algorithms** (`nanodsp._core.fxdsp`, `nanodsp.effects`, `nanodsp.synthesis`) -- 9 algorithms from cleaned/rewritten third-party sources
   - `HardClipper` -- first-order antiderivative antialiased hard clipping
   - `SoftClipper` -- first-order antiderivative antialiased soft clipping (sin saturation)
   - `Wavefolder` -- second-order antiderivative antialiased wavefolding
@@ -77,8 +116,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `MinBLEP` -- minimum band-limited step oscillator (saw, reverse saw, square, triangle) with precomputed 2048-element table at 64x oversampling
   - `PsolaShifter` -- PSOLA pitch shifting with autocorrelation pitch detection and grain-based resynthesis
   - `FormantFilter` -- 3 cascaded bandpass biquads tuned to vowel formant frequencies (A/E/I/O/U) with blending
-  - Python wrappers: `aa_hard_clip`, `aa_soft_clip`, `aa_wavefold`, `schroeder_reverb`, `moorer_reverb`, `formant_filter`, `psola_pitch_shift`, `minblep`
-  - 69 tests (`tests/test_fxdsp.py`)
+  - `PingPongDelay` -- stereo ping-pong delay with crossed feedback and linear interpolation
+  - `FreqShifter` -- Bode-style frequency shifter using allpass Hilbert transform
+  - `RingMod` -- ring modulator with carrier oscillator and optional LFO FM
+  - Python wrappers: `aa_hard_clip`, `aa_soft_clip`, `aa_wavefold`, `schroeder_reverb`, `moorer_reverb`, `formant_filter`, `psola_pitch_shift`, `minblep`, `ping_pong_delay`, `freq_shift`, `ring_mod`
+  - 105 tests (`tests/test_fxdsp.py`)
 
 - **Multi-order IIR filter design** (`nanodsp._core.iirdesign`, `nanodsp.effects`) -- 5 classical filter families via DspFilters (Vinnie Falco, MIT)
   - Butterworth (maximally flat passband)
@@ -131,7 +173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `demo_synthesis.py` -- 44 synthesis sounds (oscillators, FM, formant, noise, drums, physical modeling, STK instruments, sequence) -- no input file required
   - `demo_analysis.py` -- audio analysis printout (loudness, spectral features, pitch detection, onset detection, chromagram) -- no audio output
   - `demo_grainflow.py` -- 7 granular synthesis variants (basic cloud, dense cloud, pitch shift up/down, sparse stochastic, stereo panned, recorder)
-  - `demo_fxdsp.py` -- 28 FX DSP outputs: antialiased waveshaping (6), Schroeder/Moorer reverbs (6), formant vowels (5), PSOLA pitch shifts (6), minBLEP waveforms (5)
+  - `demo_fxdsp.py` -- 38 FX DSP outputs: antialiased waveshaping (6), Schroeder/Moorer reverbs (6), formant vowels (5), PSOLA pitch shifts (6), ping-pong delay (3), frequency shifter (3), ring modulator (4), minBLEP waveforms (5)
   - `demo_iir_filters.py` -- 23 IIR filter outputs: Butterworth (6), Chebyshev I (4), Chebyshev II (3), Elliptic (3), Bessel (4), order comparison (3)
   - All file-processing scripts accept positional `infile`, optional `-o`/`--out-dir` (default `build/demo-output/`), and `-n`/`--no-normalize` to skip peak normalization
   - Peak normalization (0 dBFS) applied by default to prevent clipping on PCM output

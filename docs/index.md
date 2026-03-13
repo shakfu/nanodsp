@@ -4,7 +4,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 
 ## Features
 
-- **70+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing
+- **79+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing
 - **11 C++ backends** -- signalsmith, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP
 - **Zero-copy where possible** -- numpy arrays pass directly to C++ with GIL release for true multi-threaded parallelism
 - **CLI included** -- process, analyze, synthesize, convert, and benchmark audio from the command line
@@ -52,7 +52,7 @@ uv run pytest
 | [HISSTools Library](https://github.com/AlexHarker/HISSTools_Library) | BSD-3 | Convolution, spectral processing, statistical analysis, windows |
 | [CHOC](https://github.com/Tracktion/choc) | ISC | FLAC codec (read/write) |
 | [GrainflowLib](https://github.com/composingcap/GrainflowLib) | MIT | Granular synthesis |
-| [fxdsp](https://github.com/hamiltonkibbe/FXDsp) | MIT | Antialiased waveshaping, classic reverbs, formant filter, PSOLA |
+| [fxdsp](https://github.com/hamiltonkibbe/FXDsp) | MIT | Antialiased waveshaping, classic reverbs, formant filter, PSOLA, ping-pong delay, frequency shifter, ring modulator |
 | [DspFilters](https://github.com/vinniefalco/DSPFilters) | MIT | Multi-order IIR filter design |
 | [vafilters](https://github.com/music-dsp-collection/va-filters) | MIT | Virtual analog filters (Moog, Diode, Korg35, Oberheim) |
 | [PolyBLEP et al.](https://github.com/martinfinke/PolyBLEP) | MIT | Band-limited oscillators |

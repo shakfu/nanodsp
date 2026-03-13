@@ -279,6 +279,7 @@ class TestBiQuad:
         t = np.arange(100, dtype=np.float32) / SR
         sig = np.sin(2 * np.pi * 440 * t).astype(np.float32)
         out = bq.process(sig)
+        assert out.shape == sig.shape
         np.testing.assert_allclose(out, sig, atol=1e-5)
 
     def test_gain(self):
@@ -447,10 +448,12 @@ class TestDelayA:
     def test_output(self):
         d = stk.delays.DelayA(5.5, 100)
         d.process_sample(1.0)
+        outputs = []
         for _ in range(10):
-            d.process_sample(0.0)
+            outputs.append(d.process_sample(0.0))
         # Output should not be all zero (impulse passed through)
         # DelayA uses allpass interpolation
+        assert max(abs(v) for v in outputs) > 0.0
 
 
 class TestDelayL:
@@ -538,7 +541,12 @@ class TestFreeVerb:
     def test_effect_mix(self):
         fv = stk.effects.FreeVerb()
         fv.set_effect_mix(0.5)
-        # Mix affects output blend
+        # Mix affects output blend -- verify processing still works
+        left, right = fv.process_sample(1.0)
+        assert isinstance(left, float)
+        assert isinstance(right, float)
+        assert np.isfinite(left)
+        assert np.isfinite(right)
 
 
 class TestJCRev:
@@ -557,6 +565,11 @@ class TestJCRev:
     def test_set_t60(self):
         r = stk.effects.JCRev()
         r.set_t60(2.0)
+        # Verify reverb still processes after setting t60
+        left, right = r.process_sample(1.0)
+        assert isinstance(left, float)
+        assert np.isfinite(left)
+        assert np.isfinite(right)
 
 
 class TestNRev:
@@ -680,12 +693,23 @@ class TestClarinet:
     def test_control_change(self):
         c = stk.instruments.Clarinet()
         c.control_change(2, 64.0)  # Reed stiffness
+        # Verify instrument still produces output after control change
+        c.note_on(440.0, 0.8)
+        out = c.process(1024)
+        assert out.shape == (1024,)
+        assert out.dtype == np.float32
+        assert np.all(np.isfinite(out))
 
     def test_blowing(self):
         c = stk.instruments.Clarinet()
         c.start_blowing(0.8, 0.02)
-        c.process(2048)
+        out = c.process(2048)
+        assert out.shape == (2048,)
+        assert out.dtype == np.float32
+        assert np.all(np.isfinite(out))
         c.stop_blowing(0.02)
+        decay = c.process(2048)
+        assert decay.shape == (2048,)
 
 
 class TestFlute:
@@ -701,6 +725,12 @@ class TestFlute:
         f.set_jet_reflection(0.5)
         f.set_end_reflection(0.5)
         f.set_jet_delay(0.5)
+        # Verify instrument still processes after setting jet parameters
+        f.note_on(440.0, 0.8)
+        out = f.process(1024)
+        assert out.shape == (1024,)
+        assert out.dtype == np.float32
+        assert np.all(np.isfinite(out))
 
 
 class TestBrass:
@@ -714,6 +744,12 @@ class TestBrass:
     def test_set_lip(self):
         b = stk.instruments.Brass()
         b.set_lip(440.0)
+        # Verify instrument still processes after setting lip frequency
+        b.note_on(440.0, 0.8)
+        out = b.process(1024)
+        assert out.shape == (1024,)
+        assert out.dtype == np.float32
+        assert np.all(np.isfinite(out))
 
 
 class TestBowed:
@@ -727,8 +763,13 @@ class TestBowed:
     def test_bowing(self):
         b = stk.instruments.Bowed()
         b.start_bowing(0.8, 0.02)
-        b.process(2048)
+        out = b.process(2048)
+        assert out.shape == (2048,)
+        assert out.dtype == np.float32
+        assert np.all(np.isfinite(out))
         b.stop_bowing(0.02)
+        decay = b.process(2048)
+        assert decay.shape == (2048,)
 
 
 class TestPlucked:
@@ -759,6 +800,12 @@ class TestStifKarp:
         sk = stk.instruments.StifKarp()
         sk.set_stretch(0.5)
         sk.set_base_loop_gain(0.99)
+        # Verify instrument still processes after setting stretch/gain
+        sk.note_on(440.0, 0.8)
+        out = sk.process(1024)
+        assert out.shape == (1024,)
+        assert out.dtype == np.float32
+        assert np.all(np.isfinite(out))
 
 
 class TestSaxofony:
@@ -800,6 +847,12 @@ class TestBlowHole:
         b = stk.instruments.BlowHole(8.0)
         b.set_tonehole(0.5)
         b.set_vent(0.5)
+        # Verify instrument still processes after setting tonehole/vent
+        b.note_on(440.0, 0.8)
+        out = b.process(1024)
+        assert out.shape == (1024,)
+        assert out.dtype == np.float32
+        assert np.all(np.isfinite(out))
 
 
 class TestWhistle:
@@ -851,3 +904,12 @@ class TestTwang:
     def test_set_loop_filter(self):
         t = stk.instruments.Twang()
         t.set_loop_filter([0.5, 0.5])
+        # Verify Twang still processes after setting loop filter
+        t.set_frequency(440.0)
+        t.set_loop_gain(0.99)
+        excitation = np.zeros(1024, dtype=np.float32)
+        excitation[0] = 1.0
+        out = t.process(excitation)
+        assert out.shape == (1024,)
+        assert out.dtype == np.float32
+        assert np.all(np.isfinite(out))

@@ -21,6 +21,7 @@ class TestBiquadConstruction:
     def test_default_construction(self):
         bq = filters.Biquad()
         assert bq is not None
+        assert isinstance(bq, filters.Biquad)
 
     def test_lowpass_returns_self(self):
         bq = filters.Biquad()
@@ -164,6 +165,7 @@ class TestBiquadBlockProcessing:
         for i in range(len(inp)):
             sample_out[i : i + 1] = bq2.process(inp[i : i + 1])
 
+        assert block_out.shape == sample_out.shape
         np.testing.assert_allclose(block_out, sample_out, atol=1e-6)
 
 

@@ -4,3 +4,6 @@
 #include "minblep_osc.h"
 #include "psola.h"
 #include "formant_filter.h"
+#include "ping_pong_delay.h"
+#include "freq_shifter.h"
+#include "ring_mod.h"

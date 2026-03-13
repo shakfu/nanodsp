@@ -8,10 +8,12 @@ class TestCubicLfo:
     def test_construction(self):
         lfo = envelopes.CubicLfo()
         assert lfo is not None
+        assert isinstance(lfo, envelopes.CubicLfo)
 
     def test_construction_with_seed(self):
         lfo = envelopes.CubicLfo(42)
         assert lfo is not None
+        assert isinstance(lfo, envelopes.CubicLfo)
 
     def test_set_and_next(self):
         lfo = envelopes.CubicLfo(0)
@@ -43,6 +45,7 @@ class TestCubicLfo:
         lfo2.set(0.0, 1.0, 0.01)
         out2 = lfo2.process(128)
 
+        assert out1.shape == out2.shape
         np.testing.assert_allclose(out1, out2)
 
     def test_reset(self):
@@ -60,6 +63,7 @@ class TestBoxFilter:
     def test_construction(self):
         bf = envelopes.BoxFilter(64)
         assert bf is not None
+        assert isinstance(bf, envelopes.BoxFilter)
 
     def test_process_shape(self):
         bf = envelopes.BoxFilter(64)
@@ -86,6 +90,7 @@ class TestBoxFilter:
         bf.reset(1.0)
         inp = np.ones(128, dtype=np.float32)
         out = bf.process(inp)
+        assert out.shape == (128,)
         # After settling, DC should pass through
         np.testing.assert_allclose(out[-32:], 1.0, atol=1e-5)
 
@@ -109,10 +114,12 @@ class TestBoxStackFilter:
     def test_construction(self):
         bs = envelopes.BoxStackFilter(64)
         assert bs is not None
+        assert isinstance(bs, envelopes.BoxStackFilter)
 
     def test_construction_with_layers(self):
         bs = envelopes.BoxStackFilter(64, 3)
         assert bs is not None
+        assert isinstance(bs, envelopes.BoxStackFilter)
 
     def test_process_shape(self):
         bs = envelopes.BoxStackFilter(64)
@@ -151,6 +158,7 @@ class TestPeakHold:
     def test_construction(self):
         ph = envelopes.PeakHold(64)
         assert ph is not None
+        assert isinstance(ph, envelopes.PeakHold)
 
     def test_process_shape(self):
         ph = envelopes.PeakHold(64)
@@ -194,6 +202,7 @@ class TestPeakDecayLinear:
     def test_construction(self):
         pd = envelopes.PeakDecayLinear(64)
         assert pd is not None
+        assert isinstance(pd, envelopes.PeakDecayLinear)
 
     def test_process_shape(self):
         pd = envelopes.PeakDecayLinear(64)

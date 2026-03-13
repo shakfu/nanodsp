@@ -1,6 +1,6 @@
 [project]
 name = "nanodsp"
-version = "0.1.4"
+version = "0.1.5"
 description = "High-performance Python DSP toolkit built on C++ libraries via nanobind"
 readme = "README.md"
 license = { text = "MIT" }
@@ -51,6 +51,7 @@ dev = [
     "mypy>=1.19.1",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
+    "pytest-review>=0.1.2",
     "ruff>=0.14.9",
     "twine>=6.2.0",
 ]

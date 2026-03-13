@@ -81,6 +81,7 @@ class TestReadWav:
         b = struct.pack("<i", val)[:3]
         p = tmp_wav(b, 1, 3, 48000, 1)
         buf = read_wav(p)
+        assert buf.channels == 1
         np.testing.assert_allclose(buf.data[0, 0], 0.5, atol=0.001)
 
     def test_read_24bit_negative(self, tmp_wav):
@@ -88,6 +89,7 @@ class TestReadWav:
         b = struct.pack("<i", val)[:3]
         p = tmp_wav(b, 1, 3, 48000, 1)
         buf = read_wav(p)
+        assert buf.channels == 1
         np.testing.assert_allclose(buf.data[0, 0], -0.5, atol=0.001)
 
     def test_read_32bit(self, tmp_wav):
@@ -123,6 +125,7 @@ class TestWriteWav:
         p = tmp_path / "out24.wav"
         write_wav(p, buf, bit_depth=24)
         recovered = read_wav(p)
+        assert recovered.frames == buf.frames
         # 24-bit has much finer resolution
         np.testing.assert_allclose(recovered.data, buf.data, atol=1.0 / 8388608 + 1e-5)
 

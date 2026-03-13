@@ -174,6 +174,7 @@ class TestFFTFunctions:
         result = ops.irfft(spectra, 1024, sample_rate=48000.0)
         # Unscaled: need to divide by fft_size
         recovered = result.data / fft_size
+        assert result.data.shape == buf.data.shape
         np.testing.assert_allclose(recovered[0, :1024], buf.data[0], atol=1e-4)
 
 
@@ -188,6 +189,7 @@ class TestConvolve:
         buf = AudioBuffer.sine(440.0, frames=1024, sample_rate=48000.0)
         ir = AudioBuffer.impulse(channels=1, frames=64, sample_rate=48000.0)
         result = ops.convolve(buf, ir)
+        assert result.frames == buf.frames
         np.testing.assert_allclose(result.data, buf.data, atol=1e-5)
 
     def test_output_length_trimmed(self):
@@ -238,6 +240,7 @@ class TestConvolve:
         ir = AudioBuffer(kernel, sample_rate=48000.0)
         result = ops.convolve(buf, ir, trim=False)
         expected = np.convolve(sig, kernel)
+        assert len(result.data[0]) == len(expected)
         np.testing.assert_allclose(result.data[0], expected, atol=1e-4)
 
     def test_metadata_preserved(self):
@@ -295,12 +298,14 @@ class TestMixFunctions:
         buf = AudioBuffer(data, sample_rate=48000.0)
         once = ops.hadamard(buf)
         twice = ops.hadamard(once)
+        assert twice.data.shape == buf.data.shape
         np.testing.assert_allclose(twice.data, buf.data, atol=1e-4)
 
     def test_hadamard_energy_preservation(self):
         buf = AudioBuffer.noise(channels=4, frames=64, sample_rate=48000.0, seed=0)
         result = ops.hadamard(buf)
         # Energy should be preserved per-frame
+        assert result.channels == buf.channels
         for i in range(buf.frames):
             in_e = np.sum(buf.data[:, i] ** 2)
             out_e = np.sum(result.data[:, i] ** 2)
@@ -319,6 +324,7 @@ class TestMixFunctions:
         buf = AudioBuffer(data, sample_rate=48000.0)
         once = ops.householder(buf)
         twice = ops.householder(once)
+        assert twice.data.shape == buf.data.shape
         np.testing.assert_allclose(twice.data, buf.data, atol=1e-4)
 
     def test_householder_any_channel_count(self):
@@ -332,12 +338,14 @@ class TestMixFunctions:
         b = AudioBuffer.zeros(1, 64, sample_rate=48000.0)
         result = ops.crossfade(a, b, 0.0)
         # x=0 -> from=a, to=b; from_c ~1, to_c ~0
+        assert result.frames == a.frames
         np.testing.assert_allclose(result.data, a.data, atol=0.02)
 
     def test_crossfade_at_one(self):
         a = AudioBuffer.zeros(1, 64, sample_rate=48000.0)
         b = AudioBuffer.ones(1, 64, sample_rate=48000.0)
         result = ops.crossfade(a, b, 1.0)
+        assert result.channels == b.channels
         np.testing.assert_allclose(result.data, b.data, atol=0.02)
 
     def test_crossfade_midpoint(self):
@@ -388,6 +396,7 @@ class TestLfoFunction:
     def test_lfo_deterministic(self):
         a = ops.lfo(1024, low=0.0, high=1.0, rate=0.005, seed=123)
         b = ops.lfo(1024, low=0.0, high=1.0, rate=0.005, seed=123)
+        assert a.data.shape == b.data.shape
         np.testing.assert_array_equal(a.data, b.data)
 
     def test_lfo_sample_rate(self):
@@ -406,11 +415,13 @@ class TestNormalizePeak:
         result = ops.normalize_peak(buf, target_db=-6.0)
         expected = 10.0 ** (-6.0 / 20.0)
         actual_peak = np.max(np.abs(result.data))
+        assert result.data.dtype == np.float32
         np.testing.assert_allclose(actual_peak, expected, rtol=1e-4)
 
     def test_0db_target(self):
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
         result = ops.normalize_peak(buf, target_db=0.0)
+        assert result.frames == buf.frames
         np.testing.assert_allclose(np.max(np.abs(result.data)), 1.0, rtol=1e-4)
 
     def test_silence_returns_silence(self):
@@ -555,6 +566,7 @@ class TestPan:
         buf = AudioBuffer.ones(1, 1024, sample_rate=48000.0)
         result = ops.pan(buf, position=0.0)
         # At center, both channels should have equal amplitude
+        assert result.data.dtype == np.float32
         np.testing.assert_allclose(result.data[0, 0], result.data[1, 0], rtol=1e-5)
 
     def test_hard_left(self):
@@ -588,12 +600,14 @@ class TestMixBuffers:
         a = AudioBuffer.ones(1, 1024, sample_rate=48000.0)
         b = AudioBuffer.ones(1, 1024, sample_rate=48000.0) * 2.0
         result = ops.mix_buffers(a, b)
+        assert result.frames == 1024
         np.testing.assert_allclose(result.data[0, 0], 3.0, atol=1e-5)
 
     def test_with_gains(self):
         a = AudioBuffer.ones(1, 1024, sample_rate=48000.0)
         b = AudioBuffer.ones(1, 1024, sample_rate=48000.0)
         result = ops.mix_buffers(a, b, gains=[0.5, 0.5])
+        assert result.channels == 1
         np.testing.assert_allclose(result.data[0, 0], 1.0, atol=1e-5)
 
     def test_different_lengths_zero_padded(self):
@@ -632,6 +646,7 @@ class TestMidSide:
         buf = AudioBuffer.noise(channels=2, frames=1024, sample_rate=48000.0, seed=0)
         encoded = ops.mid_side_encode(buf)
         decoded = ops.mid_side_decode(encoded)
+        assert decoded.data.shape == buf.data.shape
         np.testing.assert_allclose(decoded.data, buf.data, atol=1e-5)
 
     def test_encode_mono_raises(self):
@@ -649,17 +664,20 @@ class TestMidSide:
         mono = AudioBuffer.sine(440.0, channels=1, frames=1024, sample_rate=48000.0)
         stereo = AudioBuffer(np.tile(mono.data, (2, 1)), sample_rate=48000.0)
         encoded = ops.mid_side_encode(stereo)
+        assert encoded.channels == 2
         np.testing.assert_allclose(encoded.data[1], 0.0, atol=1e-6)
 
     def test_stereo_widen_identity(self):
         buf = AudioBuffer.noise(channels=2, frames=1024, sample_rate=48000.0, seed=0)
         result = ops.stereo_widen(buf, width=1.0)
+        assert result.frames == buf.frames
         np.testing.assert_allclose(result.data, buf.data, atol=1e-5)
 
     def test_stereo_widen_mono(self):
         """Width 0.0 should produce mono (L == R)."""
         buf = AudioBuffer.noise(channels=2, frames=1024, sample_rate=48000.0, seed=0)
         result = ops.stereo_widen(buf, width=0.0)
+        assert result.channels == 2
         np.testing.assert_allclose(result.data[0], result.data[1], atol=1e-5)
 
     def test_stereo_widen_wider(self):
@@ -734,6 +752,7 @@ class TestHilbert:
         env = ops.hilbert(buf)
         # Skip edges (transient)
         mid = env.data[0, 512:-512]
+        assert np.all(np.isfinite(env.data))
         np.testing.assert_allclose(mid, 1.0, atol=0.05)
 
     def test_envelope_shape(self):
@@ -751,6 +770,7 @@ class TestHilbert:
         buf = AudioBuffer.sine(440.0, frames=1024, sample_rate=48000.0)
         env1 = ops.hilbert(buf)
         env2 = ops.envelope(buf)
+        assert env1.data.shape == env2.data.shape
         np.testing.assert_array_equal(env1.data, env2.data)
 
     def test_metadata_preserved(self):
@@ -781,6 +801,7 @@ class TestMedianFilter:
         data = np.full((1, 256), 5.0, dtype=np.float32)
         buf = AudioBuffer(data, sample_rate=48000.0)
         result = ops.median_filter(buf, kernel_size=5)
+        assert result.data.shape == buf.data.shape
         np.testing.assert_allclose(result.data, buf.data, atol=1e-6)
 
     def test_multichannel(self):
@@ -792,6 +813,7 @@ class TestMedianFilter:
     def test_kernel_size_1_passthrough(self):
         buf = AudioBuffer.noise(channels=1, frames=128, sample_rate=48000.0, seed=0)
         result = ops.median_filter(buf, kernel_size=1)
+        assert result.frames == buf.frames
         np.testing.assert_allclose(result.data, buf.data, atol=1e-6)
 
     def test_even_kernel_raises(self):

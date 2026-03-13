@@ -16,7 +16,7 @@ from .filters import (
     high_shelf_db,
     peak_db,
 )
-from .dynamics import compress, limit
+from .dynamics import compress, limit, noise_gate
 from .daisysp import dc_block
 from .saturation import saturate
 
@@ -494,3 +494,445 @@ def vocal_chain(
         result = normalize_lufs(result, target_lufs=target_lufs)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Ping-Pong Delay (fxdsp C++ backend)
+# ---------------------------------------------------------------------------
+
+
+def ping_pong_delay(
+    buf: AudioBuffer,
+    delay_ms: float = 375.0,
+    feedback: float = 0.5,
+    mix: float = 0.5,
+) -> AudioBuffer:
+    """Stereo ping-pong delay with crossed feedback.
+
+    The delayed signal bounces between left and right channels.
+    Mono input is duplicated to stereo before processing.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio (mono or stereo).
+    delay_ms : float
+        Delay time in milliseconds (same for both channels).
+    feedback : float
+        Feedback amount (-0.99 to 0.99). Negative values invert phase.
+    mix : float
+        Dry/wet blend (0.0 = dry, 1.0 = fully wet).
+
+    Returns
+    -------
+    AudioBuffer
+        Stereo ping-pong delayed audio.
+    """
+    if buf.channels > 2:
+        raise ValueError(
+            f"ping_pong_delay requires mono or stereo input, got {buf.channels} channels"
+        )
+    ppd = _fxdsp.PingPongDelay()
+    ppd.init(float(buf.sample_rate))
+    ppd.delay_ms = delay_ms
+    ppd.feedback = feedback
+    ppd.mix = mix
+    if buf.channels == 1:
+        stereo_in = np.vstack([buf.data[0], buf.data[0]])
+    else:
+        stereo_in = buf.data
+    out = ppd.process(np.ascontiguousarray(stereo_in, dtype=np.float32))
+    return AudioBuffer(
+        out,
+        sample_rate=buf.sample_rate,
+        channel_layout="stereo",
+        label=buf.label,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Frequency Shifter (fxdsp C++ backend)
+# ---------------------------------------------------------------------------
+
+
+def freq_shift(
+    buf: AudioBuffer,
+    shift_hz: float = 100.0,
+) -> AudioBuffer:
+    """Shift all frequencies by a fixed amount in Hz.
+
+    Unlike pitch shifting, frequency shifting does not preserve harmonic
+    relationships.  A 440 Hz tone shifted +100 Hz becomes 540 Hz (not the
+    musical interval you would get from pitch shifting).
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    shift_hz : float
+        Shift amount in Hz.  Positive = up, negative = down.
+
+    Returns
+    -------
+    AudioBuffer
+        Frequency-shifted audio.
+    """
+
+    def _process(x):
+        fs = _fxdsp.FreqShifter()
+        fs.init(float(buf.sample_rate))
+        fs.shift_hz = shift_hz
+        return fs.process(x)
+
+    return _process_per_channel(buf, _process)
+
+
+# ---------------------------------------------------------------------------
+# Ring Modulator (fxdsp C++ backend)
+# ---------------------------------------------------------------------------
+
+
+def ring_mod(
+    buf: AudioBuffer,
+    carrier_freq: float = 440.0,
+    mix: float = 1.0,
+    lfo_freq: float = 0.0,
+    lfo_width: float = 0.0,
+) -> AudioBuffer:
+    """Ring modulation -- multiply input by a carrier sine wave.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    carrier_freq : float
+        Carrier oscillator frequency in Hz.
+    mix : float
+        Dry/wet blend (0.0 = dry, 1.0 = fully modulated).
+    lfo_freq : float
+        LFO rate in Hz that modulates the carrier frequency.
+    lfo_width : float
+        LFO modulation depth in Hz.
+
+    Returns
+    -------
+    AudioBuffer
+        Ring-modulated audio.
+    """
+
+    def _process(x):
+        rm = _fxdsp.RingMod()
+        rm.init(float(buf.sample_rate))
+        rm.carrier_freq = carrier_freq
+        rm.mix = mix
+        rm.lfo_freq = lfo_freq
+        rm.lfo_width = lfo_width
+        return rm.process(x)
+
+    return _process_per_channel(buf, _process)
+
+
+# ---------------------------------------------------------------------------
+# Shimmer Reverb
+# ---------------------------------------------------------------------------
+
+
+def shimmer_reverb(
+    buf: AudioBuffer,
+    mix: float = 0.4,
+    decay: float = 0.8,
+    shimmer: float = 0.3,
+    shift_semitones: float = 12.0,
+    preset: str = "hall",
+) -> AudioBuffer:
+    """Reverb with a pitch-shifted shimmer layer.
+
+    Applies reverb, then pitch-shifts the reverb tail and blends the
+    shifted layer back in.  Creates the ethereal, rising-tone reverb
+    popular in ambient and post-rock.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    mix : float
+        Overall wet/dry blend (0.0 = dry, 1.0 = fully wet).
+    decay : float
+        Reverb decay time (0.0 to 1.0).
+    shimmer : float
+        Blend of pitched layer within the wet signal (0.0 to 1.0).
+    shift_semitones : float
+        Pitch shift for shimmer layer in semitones (default +12 = octave up).
+    preset : str
+        Reverb preset ('room', 'hall', 'plate', 'chamber', 'cathedral').
+    """
+    from .reverb import reverb as _reverb
+
+    wet = _reverb(buf, preset=preset, mix=1.0, decay=decay)
+    shifted = psola_pitch_shift(wet, semitones=shift_semitones)
+    wet_blend = (1.0 - shimmer) * wet.data + shimmer * shifted.data
+    # FDN reverb always returns stereo; match dry to stereo
+    if buf.channels == 1:
+        dry = np.tile(buf.data, (2, 1))
+    else:
+        dry = buf.data
+    out = (1.0 - mix) * dry + mix * wet_blend
+    return AudioBuffer(
+        out.astype(np.float32),
+        sample_rate=buf.sample_rate,
+        channel_layout="stereo",
+        label=buf.label,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tape Echo
+# ---------------------------------------------------------------------------
+
+
+def tape_echo(
+    buf: AudioBuffer,
+    delay_ms: float = 300.0,
+    feedback: float = 0.5,
+    repeats: int = 6,
+    tone: float = 3000.0,
+    drive: float = 0.3,
+    mix: float = 0.5,
+) -> AudioBuffer:
+    """Multi-tap delay with progressive darkening and tape saturation.
+
+    Each repeat passes through a lowpass filter and tape-style saturation,
+    so later echoes are progressively darker and warmer -- like a real
+    analog tape delay unit.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    delay_ms : float
+        Delay time per repeat in milliseconds.
+    feedback : float
+        Gain decay per repeat (0.0 to <1.0).
+    repeats : int
+        Number of echo taps to generate.
+    tone : float
+        Lowpass cutoff in Hz applied per repeat (lower = darker tails).
+    drive : float
+        Tape saturation amount per repeat (0.0 = clean).
+    mix : float
+        Wet/dry blend (0.0 = dry, 1.0 = only echoes).
+    """
+    sr = buf.sample_rate
+    delay_samples = int(sr * delay_ms / 1000.0)
+    n = buf.frames
+    wet = np.zeros_like(buf.data)
+
+    tap = buf
+    for i in range(repeats):
+        tap = lowpass(tap, tone)
+        tap = saturate(tap, drive=drive, mode="tape")
+        offset = (i + 1) * delay_samples
+        gain = feedback ** (i + 1)
+        if offset < n:
+            frames_avail = min(tap.frames, n - offset)
+            wet[:, offset:offset + frames_avail] += np.float32(gain) * tap.data[:, :frames_avail]
+
+    out = (1.0 - mix) * buf.data + mix * wet
+    return AudioBuffer(
+        out.astype(np.float32),
+        sample_rate=buf.sample_rate,
+        channel_layout=buf.channel_layout,
+        label=buf.label,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Lo-Fi
+# ---------------------------------------------------------------------------
+
+
+def lo_fi(
+    buf: AudioBuffer,
+    bit_depth: int = 8,
+    reduce: float = 0.5,
+    drive: float = 0.3,
+    tone: float = 4000.0,
+) -> AudioBuffer:
+    """Lo-fi degradation: bitcrush, sample-rate reduction, saturation, lowpass.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    bit_depth : int
+        Bit depth for quantization (lower = crunchier).
+    reduce : float
+        Sample-rate reduction amount (0.0 = none, 1.0 = maximum).
+    drive : float
+        Tape saturation amount.
+    tone : float
+        Lowpass cutoff in Hz (simulates bandwidth reduction).
+    """
+    from .daisysp import bitcrush, sample_rate_reduce
+
+    result = bitcrush(buf, bit_depth=bit_depth)
+    result = sample_rate_reduce(result, freq=1.0 - reduce)
+    result = saturate(result, drive=drive, mode="tape")
+    result = lowpass(result, tone)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Telephone Filter
+# ---------------------------------------------------------------------------
+
+
+def telephone(
+    buf: AudioBuffer,
+    low_cut: float = 300.0,
+    high_cut: float = 3400.0,
+    drive: float = 0.4,
+) -> AudioBuffer:
+    """Telephone/radio filter: tight bandpass with saturation.
+
+    Simulates the limited bandwidth and nonlinearity of a telephone
+    codec or AM radio transmission.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    low_cut : float
+        Highpass cutoff in Hz (default 300 = telephone standard).
+    high_cut : float
+        Lowpass cutoff in Hz (default 3400 = telephone standard).
+    drive : float
+        Saturation amount (adds harmonic grit).
+    """
+    result = highpass(buf, low_cut)
+    result = lowpass(result, high_cut)
+    result = saturate(result, drive=drive, mode="hard")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Gated Reverb
+# ---------------------------------------------------------------------------
+
+
+def gated_reverb(
+    buf: AudioBuffer,
+    preset: str = "plate",
+    decay: float = 0.7,
+    gate_threshold_db: float = -30.0,
+    gate_hold_ms: float = 50.0,
+    gate_release: float = 0.02,
+    mix: float = 0.5,
+) -> AudioBuffer:
+    """Reverb followed by a noise gate for truncated, punchy tails.
+
+    Classic 80s production technique: a dense reverb is abruptly cut
+    by a gate, producing a powerful burst that stops dead.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    preset : str
+        Reverb preset ('room', 'hall', 'plate', 'chamber', 'cathedral').
+    decay : float
+        Reverb decay time (0.0 to 1.0).
+    gate_threshold_db : float
+        Gate threshold in dB (below this the reverb is silenced).
+    gate_hold_ms : float
+        Gate hold time in ms before release begins.
+    gate_release : float
+        Gate release time in seconds.
+    mix : float
+        Wet/dry blend (0.0 = dry, 1.0 = fully wet).
+    """
+    from .reverb import reverb as _reverb
+
+    wet = _reverb(buf, preset=preset, mix=1.0, decay=decay)
+    gated = noise_gate(
+        wet,
+        threshold_db=gate_threshold_db,
+        hold_ms=gate_hold_ms,
+        release=gate_release,
+    )
+    # FDN reverb always returns stereo; match dry to stereo
+    if buf.channels == 1:
+        dry = np.tile(buf.data, (2, 1))
+    else:
+        dry = buf.data
+    out = (1.0 - mix) * dry + mix * gated.data
+    return AudioBuffer(
+        out.astype(np.float32),
+        sample_rate=buf.sample_rate,
+        channel_layout="stereo",
+        label=buf.label,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auto-Pan
+# ---------------------------------------------------------------------------
+
+
+def auto_pan(
+    buf: AudioBuffer,
+    rate: float = 2.0,
+    depth: float = 1.0,
+    center: float = 0.0,
+) -> AudioBuffer:
+    """LFO-driven stereo panning.
+
+    A sine LFO sweeps the signal between left and right channels using
+    equal-power panning.  Mono and stereo inputs are both supported;
+    stereo inputs are summed to mono before panning.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio (mono or stereo).
+    rate : float
+        LFO frequency in Hz.
+    depth : float
+        Panning depth (0.0 = no movement, 1.0 = full L/R sweep).
+    center : float
+        Pan center position (-1.0 = left, 0.0 = center, 1.0 = right).
+
+    Returns
+    -------
+    AudioBuffer
+        Stereo auto-panned audio.
+    """
+    sr = buf.sample_rate
+    n = buf.frames
+
+    # Sum to mono
+    if buf.channels == 1:
+        mono = buf.data[0]
+    else:
+        mono = np.mean(buf.data, axis=0)
+
+    # Sine LFO -> pan position in [-1, 1]
+    t = np.arange(n, dtype=np.float32) / sr
+    pan_pos = np.clip(
+        center + depth * np.sin(np.float32(2.0 * np.pi) * rate * t),
+        -1.0,
+        1.0,
+    )
+
+    # Equal-power panning
+    angle = (pan_pos + 1.0) * (np.float32(np.pi) / 4.0)
+    gain_l = np.cos(angle).astype(np.float32)
+    gain_r = np.sin(angle).astype(np.float32)
+
+    out = np.stack([mono * gain_l, mono * gain_r])
+    return AudioBuffer(
+        out,
+        sample_rate=sr,
+        channel_layout="stereo",
+        label=buf.label,
+    )

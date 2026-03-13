@@ -48,6 +48,10 @@ class TestSTFTFunctions:
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=42)
         spec = sp.stft(buf, window_size=1024)
         result = sp.istft(spec)
+        assert result.channels == buf.channels
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
+        assert np.all(np.isfinite(result.data))
         # Interior samples (away from edges) should match well
         margin = 1024
         np.testing.assert_allclose(
@@ -60,6 +64,10 @@ class TestSTFTFunctions:
         buf = AudioBuffer.noise(channels=2, frames=4096, sample_rate=48000.0, seed=7)
         spec = sp.stft(buf, window_size=1024)
         result = sp.istft(spec)
+        assert result.channels == buf.channels
+        assert result.frames == buf.frames
+        assert result.data.dtype == np.float32
+        assert np.all(np.isfinite(result.data))
         margin = 1024
         for ch in range(2):
             np.testing.assert_allclose(
@@ -111,6 +119,8 @@ class TestSpectralUtilities:
         mag = sp.magnitude(spec)
         ph = sp.phase(spec)
         reconstructed = sp.from_polar(mag, ph, spec)
+        assert reconstructed.data.shape == spec.data.shape
+        assert reconstructed.data.dtype == np.complex64
         np.testing.assert_allclose(
             np.abs(reconstructed.data), np.abs(spec.data), atol=1e-5
         )
@@ -133,6 +143,8 @@ class TestSpectralUtilities:
     def test_apply_mask_identity(self, spec):
         mask = np.ones(spec.data.shape, dtype=np.float32)
         result = sp.apply_mask(spec, mask)
+        assert result.data.shape == spec.data.shape
+        assert result.data.dtype == np.complex64
         np.testing.assert_allclose(result.data, spec.data, atol=1e-7)
 
     def test_apply_mask_zeros_bins(self, spec):
@@ -169,6 +181,7 @@ class TestSpectralUtilities:
     def test_spectral_gate_preserves_loud(self, spec):
         """Loud bins should pass through mostly unchanged."""
         result = sp.spectral_gate(spec, threshold_db=-100.0)
+        assert result.data.shape == spec.data.shape
         np.testing.assert_allclose(np.abs(result.data), np.abs(spec.data), atol=1e-6)
 
     def test_spectral_gate_attenuates_quiet(self):
@@ -184,6 +197,8 @@ class TestSpectralUtilities:
 
     def test_spectral_emphasis_flat(self, spec):
         result = sp.spectral_emphasis(spec, low_db=0.0, high_db=0.0)
+        assert result.data.shape == spec.data.shape
+        assert result.data.dtype == np.complex64
         np.testing.assert_allclose(result.data, spec.data, atol=1e-6)
 
     def test_spectral_emphasis_tilt(self, spec):
@@ -257,6 +272,8 @@ class TestSpectralUtilities:
 
     def test_phase_lock_preserves_magnitude(self, spec):
         result = sp.phase_lock(spec)
+        assert result.data.shape == spec.data.shape
+        assert result.data.dtype == np.complex64
         np.testing.assert_allclose(np.abs(result.data), np.abs(spec.data), atol=1e-5)
 
     def test_phase_lock_shape(self, spec):
@@ -273,16 +290,22 @@ class TestSpectralUtilities:
 
     def test_spectral_freeze_all_frames_identical(self, spec):
         result = sp.spectral_freeze(spec, frame_index=3)
+        assert result.data.shape == spec.data.shape
+        assert result.data.dtype == np.complex64
         for t in range(result.num_frames):
             np.testing.assert_array_equal(result.data[:, t, :], result.data[:, 0, :])
 
     def test_spectral_freeze_matches_source_frame(self, spec):
         idx = 5
         result = sp.spectral_freeze(spec, frame_index=idx)
+        assert result.data.dtype == np.complex64
+        assert result.channels == spec.channels
         np.testing.assert_array_equal(result.data[:, 0, :], spec.data[:, idx, :])
 
     def test_spectral_freeze_negative_index(self, spec):
         result = sp.spectral_freeze(spec, frame_index=-1)
+        assert result.data.shape == spec.data.shape
+        assert result.data.dtype == np.complex64
         np.testing.assert_array_equal(result.data[:, 0, :], spec.data[:, -1, :])
 
     def test_spectral_freeze_custom_num_frames(self, spec):
@@ -306,6 +329,8 @@ class TestSpectralUtilities:
 
     def test_spectral_morph_mix_zero(self, spec):
         result = sp.spectral_morph(spec, spec, mix=0.0)
+        assert result.data.shape == spec.data.shape
+        assert result.data.dtype == np.complex64
         np.testing.assert_allclose(np.abs(result.data), np.abs(spec.data), atol=1e-5)
 
     def test_spectral_morph_mix_one(self, spec, spec_stereo):
@@ -314,6 +339,8 @@ class TestSpectralUtilities:
         buf2 = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=99)
         spec_b = sp.stft(buf2, window_size=1024)
         result = sp.spectral_morph(spec, spec_b, mix=1.0)
+        assert result.data.dtype == np.complex64
+        assert result.channels == spec.channels
         np.testing.assert_allclose(
             np.abs(result.data),
             np.abs(spec_b.data[:, : result.num_frames, :]),
@@ -324,6 +351,8 @@ class TestSpectralUtilities:
         buf2 = AudioBuffer.noise(channels=1, frames=8192, sample_rate=48000.0, seed=77)
         spec_b = sp.stft(buf2, window_size=1024)
         result = sp.spectral_morph(spec, spec_b, mix=0.5)
+        assert result.data.dtype == np.complex64
+        assert result.channels == spec.channels
         mag_a = np.abs(spec.data[:, : result.num_frames, :])
         mag_b = np.abs(spec_b.data[:, : result.num_frames, :])
         expected_mag = 0.5 * mag_a + 0.5 * mag_b
@@ -461,6 +490,8 @@ class TestSpectralUtilities:
         """Smoothing should still produce valid output."""
         result = sp.spectral_denoise(spec, noise_frames=5, smoothing=5)
         assert result.data.shape == spec.data.shape
+        assert result.data.dtype == np.complex64
+        assert np.all(np.isfinite(result.data))
 
     def test_spectral_denoise_invalid_noise_frames(self, spec):
         with pytest.raises(ValueError, match="noise_frames must be >= 1"):

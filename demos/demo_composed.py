@@ -2,7 +2,8 @@
 """Demo: composed / chain effects on audio.
 
 Applies autowah, sample-rate reduction, exciter, de-esser, vocal chain,
-mastering chain, and STK chorus.
+mastering chain, STK chorus, and derivative composed effects (shimmer reverb,
+tape echo, lo-fi, telephone, gated reverb, auto-pan).
 """
 
 import argparse
@@ -11,7 +12,18 @@ import os
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
-from nanodsp.effects.composed import exciter, de_esser, vocal_chain, master
+from nanodsp.effects.composed import (
+    auto_pan,
+    de_esser,
+    exciter,
+    gated_reverb,
+    lo_fi,
+    master,
+    shimmer_reverb,
+    tape_echo,
+    telephone,
+    vocal_chain,
+)
 from nanodsp.effects.daisysp import autowah, sample_rate_reduce, dc_block
 from nanodsp.effects.reverb import stk_chorus
 
@@ -54,6 +66,22 @@ def main():
         ("vocal-chain", lambda b: vocal_chain(b)),
         ("master-default", lambda b: master(b, target_lufs=-14.0)),
         ("master-loud", lambda b: master(b, target_lufs=-10.0)),
+        # --- Derivative composed effects ---
+        ("shimmer-default", lambda b: shimmer_reverb(b)),
+        ("shimmer-bright", lambda b: shimmer_reverb(b, shimmer=0.6, shift_semitones=12.0)),
+        ("shimmer-fifth", lambda b: shimmer_reverb(b, shimmer=0.4, shift_semitones=7.0)),
+        ("tape-echo-default", lambda b: tape_echo(b)),
+        ("tape-echo-dark", lambda b: tape_echo(b, tone=1500.0, drive=0.5, feedback=0.6)),
+        ("tape-echo-fast", lambda b: tape_echo(b, delay_ms=150.0, feedback=0.4)),
+        ("lofi-default", lambda b: lo_fi(b)),
+        ("lofi-crushed", lambda b: lo_fi(b, bit_depth=4, reduce=0.7, tone=2000.0)),
+        ("telephone-default", lambda b: telephone(b)),
+        ("telephone-radio", lambda b: telephone(b, low_cut=500.0, high_cut=5000.0, drive=0.2)),
+        ("gated-reverb-default", lambda b: gated_reverb(b)),
+        ("gated-reverb-tight", lambda b: gated_reverb(b, gate_threshold_db=-20.0, gate_hold_ms=30.0, gate_release=0.01)),
+        ("autopan-default", lambda b: auto_pan(b)),
+        ("autopan-slow", lambda b: auto_pan(b, rate=0.5, depth=0.8)),
+        ("autopan-fast", lambda b: auto_pan(b, rate=6.0, depth=1.0)),
     ]
 
     for label, fn in demos:

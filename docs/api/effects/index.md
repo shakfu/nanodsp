@@ -1,6 +1,6 @@
 # Effects
 
-The `nanodsp.effects` package contains 70+ DSP functions organized into submodules.
+The `nanodsp.effects` package contains 79+ DSP functions organized into submodules.
 
 Import from the specific submodule you need:
 
@@ -20,4 +20,4 @@ from nanodsp.effects.composed import master, vocal_chain
 | [`dynamics`](dynamics.md) | Compressor, limiter, noise gate, AGC |
 | [`saturation`](saturation.md) | Soft/hard/tape saturation, antialiased waveshaping |
 | [`reverb`](reverb.md) | FDN reverb, Schroeder, Moorer, STK reverbs, STK chorus/echo |
-| [`composed`](composed.md) | Exciter, de-esser, parallel compress, stereo delay, multiband compress, mastering, vocal chain |
+| [`composed`](composed.md) | Exciter, de-esser, parallel compress, stereo delay, ping-pong delay, freq shift, ring mod, multiband compress, mastering, vocal chain, shimmer reverb, tape echo, lo-fi, telephone, gated reverb, auto-pan |

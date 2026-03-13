@@ -17,6 +17,7 @@ class TestWindows:
 
     def test_hann_symmetry(self):
         w = hisstools.windows.hann(256)
+        assert w.shape == (256,)
         assert_allclose(w, w[::-1], atol=1e-6)
 
     def test_hann_endpoints(self):
@@ -30,6 +31,7 @@ class TestWindows:
 
     def test_rect_all_ones(self):
         w = hisstools.windows.rect(64)
+        assert w.shape == (64,)
         assert_allclose(w, np.ones(64, dtype=np.float32))
 
     def test_all_simple_windows_callable(self):
@@ -76,12 +78,14 @@ class TestWindows:
     def test_tukey_alpha_zero(self):
         """tukey(alpha=0) should be all ones (like rect)."""
         w = hisstools.windows.tukey(64, alpha=0.0)
+        assert w.shape == (64,)
         assert_allclose(w, np.ones(64, dtype=np.float32), atol=1e-6)
 
     def test_tukey_alpha_one(self):
         """tukey(alpha=1) should approximate hann."""
         w_tukey = hisstools.windows.tukey(256, alpha=1.0)
         w_hann = hisstools.windows.hann(256)
+        assert w_tukey.shape == w_hann.shape
         assert_allclose(w_tukey, w_hann, atol=1e-5)
 
     def test_trapezoid_params(self):
@@ -214,6 +218,7 @@ class TestSpectral:
         delta = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
         signal = np.array([1.0, 2.0, 3.0], dtype=np.float32)
         out = sp.convolve(delta, signal)
+        assert len(out) >= 3
         # First 3 samples should match signal
         assert_allclose(out[:3], signal, atol=1e-5)
 
@@ -239,6 +244,7 @@ class TestSpectral:
     def test_kernel_smoother_construction(self):
         ks = hisstools.spectral.KernelSmoother()
         assert ks is not None
+        assert isinstance(ks, hisstools.spectral.KernelSmoother)
 
     def test_kernel_smoother_smooth(self):
         ks = hisstools.spectral.KernelSmoother()
@@ -254,6 +260,7 @@ class TestConvolution:
     def test_mono_convolve_construction(self):
         mc = hisstools.convolution.MonoConvolve(1024)
         assert mc is not None
+        assert isinstance(mc, hisstools.convolution.MonoConvolve)
 
     def test_mono_convolve_delta_passthrough(self):
         mc = hisstools.convolution.MonoConvolve(1024, latency=0)
@@ -262,6 +269,7 @@ class TestConvolution:
         mc.set_ir(ir)
         inp = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], dtype=np.float32)
         out = mc.process(inp)
+        assert out.shape == inp.shape
         assert_allclose(out, inp, atol=1e-5)
 
     def test_mono_convolve_reset(self):
@@ -306,15 +314,35 @@ class TestConvolution:
 
     def test_convolver_reset(self):
         cv = hisstools.convolution.Convolver(1, 1, latency=0)
+        ir = np.zeros(32, dtype=np.float32)
+        ir[0] = 1.0
+        cv.set_ir(0, 0, ir)
         cv.reset()
+        # After reset, processing should still work and return correct shape
+        inp = np.ones((1, 8), dtype=np.float32)
+        out = cv.process(inp)
+        assert out.shape == (1, 8)
+        assert out.dtype == np.float32
 
     def test_convolver_clear(self):
         cv = hisstools.convolution.Convolver(1, 1, latency=0)
         ir = np.array([1.0], dtype=np.float32)
         cv.set_ir(0, 0, ir)
         cv.clear()
+        # After clear, processing should produce silence
+        inp = np.ones((1, 8), dtype=np.float32)
+        out = cv.process(inp)
+        assert out.shape == (1, 8)
+        assert out.dtype == np.float32
 
     def test_latency_modes(self):
         for mode_val in [0, 1, 2]:
             mc = hisstools.convolution.MonoConvolve(1024, latency=mode_val)
             assert mc is not None
+            assert isinstance(mc, hisstools.convolution.MonoConvolve)
+            # Should be able to process after construction with any latency mode
+            ir = np.array([1.0], dtype=np.float32)
+            mc.set_ir(ir)
+            out = mc.process(np.ones(8, dtype=np.float32))
+            assert out.shape == (8,)
+            assert out.dtype == np.float32

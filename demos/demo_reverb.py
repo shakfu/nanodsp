@@ -40,12 +40,12 @@ def main():
     name = os.path.splitext(os.path.basename(args.infile))[0]
 
     demos = [
-        # FDN reverb presets
-        ("fdn-room", lambda b: reverb(b, preset="room", mix=0.3, decay=0.6)),
-        ("fdn-hall", lambda b: reverb(b, preset="hall", mix=0.35, decay=0.8)),
-        ("fdn-plate", lambda b: reverb(b, preset="plate", mix=0.3, decay=0.7)),
-        ("fdn-chamber", lambda b: reverb(b, preset="chamber", mix=0.3, decay=0.75)),
-        ("fdn-cathedral", lambda b: reverb(b, preset="cathedral", mix=0.4, decay=0.85)),
+        # FDN reverb presets -- parameters chosen to highlight each space's character
+        ("fdn-room", lambda b: reverb(b, preset="room", mix=0.25, decay=0.4, damping=0.6)),
+        ("fdn-hall", lambda b: reverb(b, preset="hall", mix=0.4, decay=0.85, damping=0.35)),
+        ("fdn-plate", lambda b: reverb(b, preset="plate", mix=0.35, decay=0.6, damping=0.15)),
+        ("fdn-chamber", lambda b: reverb(b, preset="chamber", mix=0.3, decay=0.7, damping=0.5)),
+        ("fdn-cathedral", lambda b: reverb(b, preset="cathedral", mix=0.5, decay=0.95, damping=0.25)),
         # DaisySP ReverbSc
         ("reverbsc-short", lambda b: reverb_sc(b, feedback=0.5, lp_freq=12000.0)),
         ("reverbsc-long", lambda b: reverb_sc(b, feedback=0.85, lp_freq=8000.0)),

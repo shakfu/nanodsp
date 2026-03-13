@@ -1,6 +1,6 @@
 # Composed Effects
 
-Higher-level effects built by combining multiple primitives: exciter, de-esser, parallel compression, stereo delay, multiband compression, formant filtering, PSOLA pitch shifting, mastering, and vocal processing chains.
+Higher-level effects built by combining multiple primitives: exciter, de-esser, parallel compression, stereo delay, multiband compression, formant filtering, PSOLA pitch shifting, mastering, vocal processing chains, shimmer reverb, tape echo, lo-fi, telephone, gated reverb, and auto-pan.
 
 ## Usage examples
 
@@ -82,6 +82,110 @@ shifted = composed.psola_pitch_shift(buf, semitones=5.0)
 
 # Down one octave
 down = composed.psola_pitch_shift(buf, semitones=-12.0)
+```
+
+### Ping-pong delay
+
+```python
+# Stereo ping-pong delay with crossed feedback
+pp = composed.ping_pong_delay(buf, delay_ms=375.0, feedback=0.5, mix=0.5)
+
+# Shorter delay, less feedback
+pp = composed.ping_pong_delay(buf, delay_ms=125.0, feedback=0.3, mix=0.4)
+```
+
+### Frequency shifter
+
+```python
+# Shift all frequencies up by 100 Hz (inharmonic -- not pitch shifting)
+shifted = composed.freq_shift(buf, shift_hz=100.0)
+
+# Shift down by 50 Hz
+shifted = composed.freq_shift(buf, shift_hz=-50.0)
+```
+
+### Ring modulator
+
+```python
+# Classic ring mod at 300 Hz carrier
+ring = composed.ring_mod(buf, carrier_freq=300.0)
+
+# With LFO modulating the carrier frequency
+wobble = composed.ring_mod(buf, carrier_freq=300.0, lfo_freq=5.0, lfo_width=20.0)
+
+# 50/50 dry/wet mix
+subtle = composed.ring_mod(buf, carrier_freq=200.0, mix=0.5)
+```
+
+### Shimmer reverb
+
+```python
+# Ethereal octave-up shimmer reverb
+shimmer = composed.shimmer_reverb(buf, mix=0.4, shimmer=0.3)
+
+# Brighter shimmer with more pitch blend
+bright = composed.shimmer_reverb(buf, shimmer=0.6, shift_semitones=12.0, preset="cathedral")
+
+# Fifth-up shimmer for a different harmonic flavor
+fifth = composed.shimmer_reverb(buf, shimmer=0.4, shift_semitones=7.0)
+```
+
+### Tape echo
+
+```python
+# Classic tape delay with darkening repeats
+echo = composed.tape_echo(buf, delay_ms=300.0, feedback=0.5, tone=3000.0)
+
+# Dark, saturated echoes
+warm = composed.tape_echo(buf, delay_ms=400.0, feedback=0.6, tone=1500.0, drive=0.5)
+
+# Fast slapback-style
+slap = composed.tape_echo(buf, delay_ms=100.0, feedback=0.3, repeats=3)
+```
+
+### Lo-fi
+
+```python
+# Default lo-fi degradation
+lofi = composed.lo_fi(buf)
+
+# Heavy bitcrushing with bandwidth reduction
+crushed = composed.lo_fi(buf, bit_depth=4, reduce=0.7, tone=2000.0)
+```
+
+### Telephone
+
+```python
+# Standard telephone bandpass (300-3400 Hz) with saturation
+phone = composed.telephone(buf)
+
+# AM radio simulation (wider bandwidth, less distortion)
+radio = composed.telephone(buf, low_cut=500.0, high_cut=5000.0, drive=0.2)
+```
+
+### Gated reverb
+
+```python
+# Classic 80s gated reverb
+gated = composed.gated_reverb(buf, preset="plate", mix=0.5)
+
+# Tight, punchy gate
+tight = composed.gated_reverb(
+    buf, gate_threshold_db=-20.0, gate_hold_ms=30.0, gate_release=0.01
+)
+```
+
+### Auto-pan
+
+```python
+# Moderate stereo auto-panning
+panned = composed.auto_pan(buf, rate=2.0, depth=1.0)
+
+# Slow, subtle movement
+gentle = composed.auto_pan(buf, rate=0.5, depth=0.5)
+
+# Fast tremolo-like panning
+fast = composed.auto_pan(buf, rate=6.0, depth=1.0)
 ```
 
 ### Mastering chain

@@ -1,6 +1,7 @@
 """Tests for nanodsp.delay module (signalsmith delay lines)."""
 
 import numpy as np
+import pytest
 from nanodsp._core import delay
 
 
@@ -14,14 +15,17 @@ class TestDelayConstruction:
     def test_default_construction(self):
         d = delay.Delay()
         assert d is not None
+        assert isinstance(d, delay.Delay)
 
     def test_construction_with_capacity(self):
         d = delay.Delay(1024)
         assert d is not None
+        assert isinstance(d, delay.Delay)
 
     def test_cubic_construction(self):
         d = delay.DelayCubic(1024)
         assert d is not None
+        assert isinstance(d, delay.DelayCubic)
 
 
 class TestDelayLatency:
@@ -82,6 +86,7 @@ class TestDelayProcess:
         d.reset()
         # After reset, processing zeros should give zeros
         out = d.process(np.zeros(16, dtype=np.float32), 4.0)
+        assert out.shape == (16,)
         np.testing.assert_allclose(out, 0.0, atol=1e-7)
 
     def test_resize(self):
@@ -111,17 +116,15 @@ class TestDelayVarying:
         out_fixed = d1.process(inp, delay_val)
         delays = np.full(64, delay_val, dtype=np.float32)
         out_varying = d2.process_varying(inp, delays)
+        assert out_fixed.shape == out_varying.shape
         np.testing.assert_allclose(out_fixed, out_varying, atol=1e-6)
 
     def test_mismatched_lengths_raises(self):
         d = delay.Delay(128)
         inp = np.ones(64, dtype=np.float32)
         delays = np.ones(32, dtype=np.float32)
-        try:
+        with pytest.raises((ValueError, RuntimeError)):
             d.process_varying(inp, delays)
-            assert False, "Should have raised"
-        except (ValueError, RuntimeError):
-            pass
 
 
 class TestDelayCubic:
