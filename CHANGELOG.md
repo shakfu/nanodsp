@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6]
+
 ### Added
 
 - **Sidechain compressor** (`nanodsp._core.fxdsp.SidechainCompressor`, `nanodsp.effects.dynamics.sidechain_compress`) -- compressor driven by an external sidechain signal for ducking effects. C++ implementation with one-pole attack/release smoothing in dB domain. GIL released during processing.
@@ -31,10 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - nanobind bindings for all 3 new C++ classes in `_core_fxdsp.cpp` with GIL release
 - Type stubs for the 3 new classes in `_core.pyi`
 - 25 new tests: sidechain compress (6), transient shaper (4), lookahead limiter (4), true peak (4), vocoder (7)
-
-## [0.1.6]
-
-### Added
 
 - **Integration tests** -- 10 new composed effect chain tests (`TestEffectChains`) verifying multi-stage pipelines produce finite, correctly-shaped output: exciter->compress->limit, vocal_chain, master chain, lowpass->saturate->reverb, stereo_delay->compress->limit, de_esser->EQ->compress, multiband_compress->limit, shimmer_reverb->normalize, lo_fi->reverb, noise_gate->reverb->limit
 - **Edge-case tests** -- 7 new tests for boundary conditions: `sample_rate=0` and negative sample_rate rejection, `pitch_detect(fmin >= fmax)` returns unvoiced, extreme `time_stretch` rates (0.05 and 10.0), near-silence LUFS metering, near-silence AGC stability
