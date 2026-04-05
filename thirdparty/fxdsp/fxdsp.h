@@ -7,3 +7,4 @@
 #include "ping_pong_delay.h"
 #include "freq_shifter.h"
 #include "ring_mod.h"
+#include "dynamics.h"

@@ -1073,6 +1073,138 @@ class TestAgc:
 
 
 # ---------------------------------------------------------------------------
+# Sidechain Compression
+# ---------------------------------------------------------------------------
+
+
+class TestSidechainCompress:
+    def test_sidechain_silence_no_reduction(self):
+        """Silent sidechain should not reduce gain."""
+        buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        sidechain = AudioBuffer.zeros(1, 8192, sample_rate=48000.0)
+        result = dynamics.sidechain_compress(buf, sidechain, ratio=8.0, threshold=-20.0)
+        np.testing.assert_allclose(result.data, buf.data, atol=1e-5)
+
+    def test_loud_sidechain_reduces_gain(self):
+        """Loud sidechain should reduce the output level."""
+        buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        sidechain = AudioBuffer.sine(100.0, frames=8192, sample_rate=48000.0)
+        result = dynamics.sidechain_compress(buf, sidechain, ratio=8.0, threshold=-20.0)
+        assert np.max(np.abs(result.data)) < np.max(np.abs(buf.data))
+
+    def test_ratio_one_is_identity(self):
+        """Ratio of 1.0 should produce no compression."""
+        buf = AudioBuffer.sine(440.0, frames=4096, sample_rate=48000.0)
+        sc = AudioBuffer.sine(100.0, frames=4096, sample_rate=48000.0)
+        result = dynamics.sidechain_compress(buf, sc, ratio=1.0, threshold=-20.0)
+        np.testing.assert_allclose(result.data, buf.data, atol=1e-5)
+
+    def test_frame_mismatch_raises(self):
+        buf = AudioBuffer.sine(440.0, frames=4096, sample_rate=48000.0)
+        sc = AudioBuffer.sine(100.0, frames=2048, sample_rate=48000.0)
+        with pytest.raises(ValueError, match="Frame count mismatch"):
+            dynamics.sidechain_compress(buf, sc)
+
+    def test_mono_sidechain_stereo_buf(self):
+        buf = AudioBuffer.noise(channels=2, frames=4096, sample_rate=48000.0, seed=0)
+        sc = AudioBuffer.sine(100.0, channels=1, frames=4096, sample_rate=48000.0)
+        result = dynamics.sidechain_compress(buf, sc, ratio=4.0, threshold=-10.0)
+        assert result.channels == 2
+        assert result.frames == 4096
+        assert np.all(np.isfinite(result.data))
+
+    def test_shape_and_metadata(self):
+        buf = AudioBuffer.noise(
+            channels=1, frames=8192, sample_rate=44100.0, seed=0, label="sc"
+        )
+        sc = AudioBuffer.sine(100.0, frames=8192, sample_rate=44100.0)
+        result = dynamics.sidechain_compress(buf, sc)
+        assert result.sample_rate == 44100.0
+        assert result.label == "sc"
+
+
+# ---------------------------------------------------------------------------
+# Transient Shaper
+# ---------------------------------------------------------------------------
+
+
+class TestTransientShape:
+    def test_unity_is_near_identity(self):
+        """attack_gain=1, sustain_gain=1 should be close to identity."""
+        buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        result = dynamics.transient_shape(buf, attack_gain=1.0, sustain_gain=1.0)
+        np.testing.assert_allclose(result.data, buf.data, atol=0.05)
+
+    def test_attack_boost_increases_transients(self):
+        """Boosting attack should increase peak of impulsive signal."""
+        data = np.zeros((1, 8192), dtype=np.float32)
+        # Create a transient burst
+        data[0, 1000:1050] = 0.8
+        data[0, 1050:2000] = 0.2  # sustain
+        buf = AudioBuffer(data, sample_rate=48000.0)
+        result = dynamics.transient_shape(buf, attack_gain=3.0, sustain_gain=1.0)
+        # Peak in the attack region should be higher
+        attack_peak_in = float(np.max(np.abs(buf.data[0, 1000:1060])))
+        attack_peak_out = float(np.max(np.abs(result.data[0, 1000:1060])))
+        assert attack_peak_out > attack_peak_in
+
+    def test_silence_stays_silent(self):
+        buf = AudioBuffer.zeros(1, 4096, sample_rate=48000.0)
+        result = dynamics.transient_shape(buf, attack_gain=5.0, sustain_gain=0.1)
+        assert np.max(np.abs(result.data)) < 1e-6
+
+    def test_shape_preserved(self):
+        buf = AudioBuffer.noise(channels=2, frames=4096, sample_rate=48000.0, seed=0)
+        result = dynamics.transient_shape(buf, attack_gain=2.0, sustain_gain=0.5)
+        assert result.channels == 2
+        assert result.frames == 4096
+        assert np.all(np.isfinite(result.data))
+
+
+# ---------------------------------------------------------------------------
+# Lookahead Limiter
+# ---------------------------------------------------------------------------
+
+
+class TestLookaheadLimit:
+    def test_output_below_threshold(self):
+        """Output should never exceed the threshold."""
+        buf = AudioBuffer.noise(channels=1, frames=16384, sample_rate=48000.0, seed=0)
+        buf = buf * 2.0  # push above 0 dBFS
+        result = dynamics.lookahead_limit(buf, threshold_db=-3.0, lookahead_ms=5.0)
+        threshold_lin = 10.0 ** (-3.0 / 20.0)
+        assert np.max(np.abs(result.data)) <= threshold_lin + 1e-4
+
+    def test_quiet_signal_unchanged(self):
+        """Signal well below threshold should pass through (delayed)."""
+        buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0) * 0.1
+        result = dynamics.lookahead_limit(buf, threshold_db=-1.0)
+        # Signal is ~-20 dBFS, threshold is -1 dBFS -> no reduction
+        lookahead = max(1, int(48000 * 5.0 / 1000.0))
+        # Compare delayed input to output
+        np.testing.assert_allclose(
+            result.data[:, lookahead:],
+            buf.data[:, : buf.frames - lookahead],
+            atol=1e-5,
+        )
+
+    def test_stereo_shape(self):
+        buf = AudioBuffer.noise(channels=2, frames=8192, sample_rate=48000.0, seed=0)
+        result = dynamics.lookahead_limit(buf, threshold_db=-3.0)
+        assert result.channels == 2
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
+
+    def test_metadata_preserved(self):
+        buf = AudioBuffer.noise(
+            channels=1, frames=4096, sample_rate=44100.0, seed=0, label="la"
+        )
+        result = dynamics.lookahead_limit(buf)
+        assert result.sample_rate == 44100.0
+        assert result.label == "la"
+
+
+# ---------------------------------------------------------------------------
 # Shimmer Reverb
 # ---------------------------------------------------------------------------
 
@@ -1481,3 +1613,66 @@ class TestEffectChains:
         result = result.pipe(dynamics.limit)
         assert np.all(np.isfinite(result.data))
         assert np.max(np.abs(result.data)) <= 1.0 + 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Vocoder
+# ---------------------------------------------------------------------------
+
+
+class TestVocoder:
+    def test_speech_noise_produces_output(self):
+        """Vocoder with noise carrier should produce non-silent output."""
+        mod = AudioBuffer.sine(440.0, frames=16384, sample_rate=48000.0)
+        carrier = AudioBuffer.noise(
+            channels=1, frames=16384, sample_rate=48000.0, seed=0
+        )
+        result = composed.vocoder(mod, carrier, n_bands=8)
+        assert result.frames == mod.frames
+        assert np.all(np.isfinite(result.data))
+        assert np.max(np.abs(result.data)) > 0.001
+
+    def test_silent_modulator_produces_silence(self):
+        mod = AudioBuffer.zeros(1, 8192, sample_rate=48000.0)
+        carrier = AudioBuffer.noise(
+            channels=1, frames=8192, sample_rate=48000.0, seed=0
+        )
+        result = composed.vocoder(mod, carrier, n_bands=8)
+        assert np.max(np.abs(result.data)) < 0.01
+
+    def test_silent_carrier_produces_silence(self):
+        mod = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        carrier = AudioBuffer.zeros(1, 8192, sample_rate=48000.0)
+        result = composed.vocoder(mod, carrier, n_bands=8)
+        assert np.max(np.abs(result.data)) < 0.01
+
+    def test_frame_mismatch_raises(self):
+        mod = AudioBuffer.sine(440.0, frames=4096, sample_rate=48000.0)
+        carrier = AudioBuffer.noise(
+            channels=1, frames=2048, sample_rate=48000.0, seed=0
+        )
+        with pytest.raises(ValueError, match="Frame count mismatch"):
+            composed.vocoder(mod, carrier)
+
+    def test_sample_rate_mismatch_raises(self):
+        mod = AudioBuffer.sine(440.0, frames=4096, sample_rate=48000.0)
+        carrier = AudioBuffer.sine(440.0, frames=4096, sample_rate=44100.0)
+        with pytest.raises(ValueError, match="Sample rate mismatch"):
+            composed.vocoder(mod, carrier)
+
+    def test_single_band(self):
+        mod = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        carrier = AudioBuffer.noise(
+            channels=1, frames=8192, sample_rate=48000.0, seed=0
+        )
+        result = composed.vocoder(mod, carrier, n_bands=1)
+        assert result.frames == 8192
+        assert np.all(np.isfinite(result.data))
+
+    def test_many_bands(self):
+        mod = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        carrier = AudioBuffer.noise(
+            channels=1, frames=8192, sample_rate=48000.0, seed=0
+        )
+        result = composed.vocoder(mod, carrier, n_bands=32)
+        assert np.all(np.isfinite(result.data))

@@ -242,4 +242,58 @@ void bind_fxdsp(nb::module_ &m) {
         .def("process", [](RingMod &self, ArrayF input) {
             return process_array(self, input);
         }, "input"_a, "Process array of samples");
+
+    // --- Sidechain Compressor ---
+
+    nb::class_<SidechainCompressor>(sub, "SidechainCompressor",
+        "Compressor driven by an external sidechain signal")
+        .def(nb::init<>())
+        .def("init", &SidechainCompressor::init, "sample_rate"_a)
+        .def("reset", &SidechainCompressor::reset)
+        .def("set_ratio", &SidechainCompressor::set_ratio, "ratio"_a)
+        .def("set_threshold", &SidechainCompressor::set_threshold, "threshold"_a)
+        .def("set_attack", &SidechainCompressor::set_attack, "attack"_a)
+        .def("set_release", &SidechainCompressor::set_release, "release"_a)
+        .def("process", [](SidechainCompressor &self, ArrayF buf, ArrayF sidechain) {
+            size_t n = buf.shape(0);
+            if (sidechain.shape(0) != n)
+                throw std::invalid_argument("buf and sidechain must have same length");
+            float *out = new float[n];
+            {
+                nb::gil_scoped_release rel;
+                self.process(buf.data(), sidechain.data(), out, (unsigned)n);
+            }
+            return make_f1(out, n);
+        }, "buf"_a, "sidechain"_a,
+        "Process: apply gain reduction to buf based on sidechain envelope");
+
+    // --- Transient Shaper ---
+
+    nb::class_<TransientShaper>(sub, "TransientShaper",
+        "Shape transients by independently scaling attack and sustain components")
+        .def(nb::init<>())
+        .def("init", &TransientShaper::init, "sample_rate"_a)
+        .def("reset", &TransientShaper::reset)
+        .def("set_attack_gain", &TransientShaper::set_attack_gain, "gain"_a)
+        .def("set_sustain_gain", &TransientShaper::set_sustain_gain, "gain"_a)
+        .def("set_fast_attack", &TransientShaper::set_fast_attack, "time"_a)
+        .def("set_fast_release", &TransientShaper::set_fast_release, "time"_a)
+        .def("set_slow_attack", &TransientShaper::set_slow_attack, "time"_a)
+        .def("set_slow_release", &TransientShaper::set_slow_release, "time"_a)
+        .def("process", [](TransientShaper &self, ArrayF input) {
+            return process_array(self, input);
+        }, "input"_a, "Process array of samples");
+
+    // --- Lookahead Limiter ---
+
+    nb::class_<LookaheadLimiter>(sub, "LookaheadLimiter",
+        "Brick-wall limiter with lookahead for transparent peak control")
+        .def(nb::init<>())
+        .def("init", &LookaheadLimiter::init, "sample_rate"_a)
+        .def("set_threshold_db", &LookaheadLimiter::set_threshold_db, "db"_a)
+        .def("set_lookahead_ms", &LookaheadLimiter::set_lookahead_ms, "ms"_a)
+        .def("set_release", &LookaheadLimiter::set_release, "release"_a)
+        .def("process", [](LookaheadLimiter &self, ArrayF input) {
+            return process_array(self, input);
+        }, "input"_a, "Process array of samples");
 }

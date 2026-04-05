@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Sidechain compressor** (`nanodsp._core.fxdsp.SidechainCompressor`, `nanodsp.effects.dynamics.sidechain_compress`) -- compressor driven by an external sidechain signal for ducking effects. C++ implementation with one-pole attack/release smoothing in dB domain. GIL released during processing.
+  - Configurable ratio, threshold, attack, release
+  - Accepts mono sidechain envelope applied across all channels of the input
+
+- **Transient shaper** (`nanodsp._core.fxdsp.TransientShaper`, `nanodsp.effects.dynamics.transient_shape`) -- independent attack and sustain envelope control using dual envelope followers. C++ implementation with configurable fast/slow attack/release times. GIL released during processing.
+  - `attack_gain` scales transient component; `sustain_gain` scales sustained component
+  - Fast envelope tracks transients (~5 ms); slow envelope tracks body (~50 ms)
+
+- **Lookahead limiter** (`nanodsp._core.fxdsp.LookaheadLimiter`, `nanodsp.effects.dynamics.lookahead_limit`) -- brick-wall limiter with lookahead buffer for transparent peak control. C++ implementation with forward-looking minimum gain curve and smooth release. GIL released during processing.
+  - Audio delayed by `lookahead_ms` so gain reduction starts before peaks arrive
+  - Output guaranteed not to exceed `threshold_db`
+
+- **True peak metering** (`nanodsp.analysis.true_peak_dbtp`) -- ITU-R BS.1770-4 true-peak measurement via 4x oversampling (two passes of `upsample_2x`). Detects inter-sample peaks that exceed the sample peak.
+
+- **Channel vocoder** (`nanodsp.effects.composed.vocoder`) -- classic channel vocoder with logarithmically-spaced bandpass filterbank, per-band envelope extraction (rectify + lowpass), and carrier modulation. Configurable band count, frequency range, and envelope smoothing.
+  - Modulator provides spectral envelope; carrier provides timbre
+  - Delegates to C++ bandpass/lowpass filters per band
+
+- C++ header `thirdparty/fxdsp/dynamics.h` with 3 header-only classes (`SidechainCompressor`, `TransientShaper`, `LookaheadLimiter`)
+- nanobind bindings for all 3 new C++ classes in `_core_fxdsp.cpp` with GIL release
+- Type stubs for the 3 new classes in `_core.pyi`
+- 25 new tests: sidechain compress (6), transient shaper (4), lookahead limiter (4), true peak (4), vocoder (7)
+
 ## [0.1.6]
 
 ### Added

@@ -91,6 +91,39 @@ class TestLoudnessLufs:
         assert abs(lufs_51 - lufs_stereo) < 0.5
 
 
+class TestTruePeakDbtp:
+    def test_silence_returns_neg_inf(self):
+        buf = AudioBuffer.zeros(1, 4096, sample_rate=48000.0)
+        dbtp = analysis.true_peak_dbtp(buf)
+        assert np.isinf(dbtp) and dbtp < 0
+
+    def test_full_scale_sine_near_zero(self):
+        """Full-scale sine should be approximately 0 dBTP (may exceed slightly)."""
+        buf = AudioBuffer.sine(1000.0, frames=48000, sample_rate=48000.0)
+        dbtp = analysis.true_peak_dbtp(buf)
+        assert -1.0 < dbtp < 1.0
+
+    def test_inter_sample_peak_exceeds_sample_peak(self):
+        """A waveform with inter-sample peaks should show true peak > sample peak."""
+        # Two consecutive samples at +0.9 and -0.9 create an inter-sample overshoot
+        data = np.zeros((1, 256), dtype=np.float32)
+        data[0, 100] = 0.9
+        data[0, 101] = -0.9
+        buf = AudioBuffer(data, sample_rate=48000.0)
+        sample_peak_db = 20.0 * np.log10(0.9)
+        dbtp = analysis.true_peak_dbtp(buf)
+        assert dbtp > sample_peak_db
+
+    def test_multichannel_returns_max(self):
+        """Should return the max across all channels."""
+        data = np.zeros((2, 4096), dtype=np.float32)
+        data[0, :] = 0.5  # channel 0 at -6 dBFS
+        data[1, :] = 0.25  # channel 1 at -12 dBFS
+        buf = AudioBuffer(data, sample_rate=48000.0)
+        dbtp = analysis.true_peak_dbtp(buf)
+        assert dbtp > -7.0  # should be near -6 dBTP
+
+
 class TestLoudnessLufsEdgeCases:
     def test_very_quiet_signal(self):
         """Near-silence should return -inf or a very negative LUFS."""

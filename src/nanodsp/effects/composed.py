@@ -301,6 +301,102 @@ def multiband_compress(
 
 
 # ---------------------------------------------------------------------------
+# Vocoder
+# ---------------------------------------------------------------------------
+
+
+def vocoder(
+    modulator: AudioBuffer,
+    carrier: AudioBuffer,
+    n_bands: int = 16,
+    freq_range: tuple[float, float] = (80.0, 8000.0),
+    env_cutoff: float = 50.0,
+) -> AudioBuffer:
+    """Channel vocoder.
+
+    Splits both signals into *n_bands* logarithmically-spaced frequency
+    bands, extracts the amplitude envelope from each modulator band, and
+    applies it to the corresponding carrier band.  The classic
+    "robot voice" effect when the modulator is speech and the carrier is
+    a rich waveform (saw, noise, chord).
+
+    Parameters
+    ----------
+    modulator : AudioBuffer
+        Signal whose spectral envelope shapes the output (e.g. speech).
+    carrier : AudioBuffer
+        Signal whose timbre fills the output (e.g. sawtooth, noise).
+        Must have the same frame count and sample rate as *modulator*.
+    n_bands : int
+        Number of analysis/synthesis bands, >= 1. Typical: 8--32.
+    freq_range : tuple[float, float]
+        (low_hz, high_hz) frequency range for the filterbank. Both must
+        be > 0 and < Nyquist.
+    env_cutoff : float
+        Lowpass cutoff in Hz for envelope smoothing, > 0. Typical: 20--100.
+        Lower = smoother envelopes, higher = more articulation.
+    """
+    if modulator.frames != carrier.frames:
+        raise ValueError(
+            f"Frame count mismatch: modulator={modulator.frames}, "
+            f"carrier={carrier.frames}"
+        )
+    if modulator.sample_rate != carrier.sample_rate:
+        raise ValueError(
+            f"Sample rate mismatch: modulator={modulator.sample_rate}, "
+            f"carrier={carrier.sample_rate}"
+        )
+
+    sr = modulator.sample_rate
+    lo, hi = freq_range
+    freqs = np.geomspace(lo, hi, n_bands)
+    # Bandwidth in octaves: spacing between adjacent bands
+    bw = np.log2(hi / lo) / n_bands
+
+    # Mix to mono for processing
+    if modulator.channels > 1:
+        mod_mono = AudioBuffer(
+            np.mean(modulator.data, axis=0, keepdims=True).astype(np.float32),
+            sample_rate=sr,
+        )
+    else:
+        mod_mono = modulator
+
+    if carrier.channels > 1:
+        car_mono = AudioBuffer(
+            np.mean(carrier.data, axis=0, keepdims=True).astype(np.float32),
+            sample_rate=sr,
+        )
+    else:
+        car_mono = carrier
+
+    out = np.zeros((1, modulator.frames), dtype=np.float32)
+
+    for freq in freqs:
+        # Skip bands at or above Nyquist
+        if freq >= sr / 2.0:
+            continue
+
+        # Band-filter both signals
+        mod_band = bandpass(mod_mono, center_hz=freq, octaves=bw)
+        car_band = bandpass(car_mono, center_hz=freq, octaves=bw)
+
+        # Extract envelope from modulator band: rectify + lowpass
+        mod_rect = AudioBuffer(np.abs(mod_band.data), sample_rate=sr)
+        env_freq = min(env_cutoff, freq * 0.5)  # don't exceed half the band freq
+        mod_env = lowpass(mod_rect, cutoff_hz=max(env_freq, 1.0))
+
+        # Apply modulator envelope to carrier band
+        out += car_band.data * mod_env.data
+
+    return AudioBuffer(
+        out.astype(np.float32),
+        sample_rate=sr,
+        label=modulator.label,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Formant Filter
 # ---------------------------------------------------------------------------
 

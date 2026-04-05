@@ -1,4 +1,4 @@
-"""Dynamics -- compression, limiting, noise gate, AGC."""
+"""Dynamics -- compression, limiting, noise gate, AGC, sidechain, transient shaper, lookahead limiter."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import numpy as np
 
 from ..buffer import AudioBuffer
 from .._helpers import _process_per_channel, _dsy_dyn
+from .._core import fxdsp as _fxdsp
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +87,66 @@ def limit(buf: AudioBuffer, pre_gain: float = 1.0) -> AudioBuffer:
 
 
 # ---------------------------------------------------------------------------
+# Sidechain compression
+# ---------------------------------------------------------------------------
+
+
+def sidechain_compress(
+    buf: AudioBuffer,
+    sidechain: AudioBuffer,
+    ratio: float = 4.0,
+    threshold: float = -20.0,
+    attack: float = 0.01,
+    release: float = 0.1,
+) -> AudioBuffer:
+    """Compress *buf* using the envelope of *sidechain* as the detector.
+
+    The gain reduction is computed from the sidechain signal but applied
+    to *buf*.  Common use: duck a bass synth under a kick drum.
+
+    Parameters
+    ----------
+    sidechain : AudioBuffer
+        Signal whose level drives the compressor.  Must have the same
+        frame count as *buf*.
+    ratio : float
+        Compression ratio, >= 1.0. Typical: 2--20.
+    threshold : float
+        Threshold in dB, typically -60 to 0.
+    attack : float
+        Attack time in seconds, > 0. Typical: 0.001--0.05.
+    release : float
+        Release time in seconds, > 0. Typical: 0.01--0.5.
+    """
+    if buf.frames != sidechain.frames:
+        raise ValueError(
+            f"Frame count mismatch: buf={buf.frames}, sidechain={sidechain.frames}"
+        )
+
+    # Mono envelope from sidechain (max abs across channels)
+    sc_env = np.ascontiguousarray(
+        np.max(np.abs(sidechain.data), axis=0), dtype=np.float32
+    )
+
+    out = np.zeros_like(buf.data)
+    for ch in range(buf.channels):
+        sc = _fxdsp.SidechainCompressor()
+        sc.init(buf.sample_rate)
+        sc.set_ratio(ratio)
+        sc.set_threshold(threshold)
+        sc.set_attack(attack)
+        sc.set_release(release)
+        out[ch] = sc.process(buf.ensure_1d(ch), sc_env)
+
+    return AudioBuffer(
+        out,
+        sample_rate=buf.sample_rate,
+        channel_layout=buf.channel_layout,
+        label=buf.label,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Noise gate
 # ---------------------------------------------------------------------------
 
@@ -161,6 +222,53 @@ def noise_gate(
 
 
 # ---------------------------------------------------------------------------
+# Transient shaper
+# ---------------------------------------------------------------------------
+
+
+def transient_shape(
+    buf: AudioBuffer,
+    attack_gain: float = 1.0,
+    sustain_gain: float = 1.0,
+    fast_attack: float = 0.005,
+    fast_release: float = 0.02,
+    slow_attack: float = 0.05,
+    slow_release: float = 0.2,
+) -> AudioBuffer:
+    """Shape transients by independently scaling attack and sustain components.
+
+    Uses two envelope followers at different speeds.  The fast envelope
+    tracks transients; the slow envelope tracks the sustained level.
+    When ``attack_gain > 1`` transients are emphasized; when
+    ``sustain_gain < 1`` the body between transients is reduced.
+
+    Parameters
+    ----------
+    attack_gain : float
+        Gain multiplier for transient (attack) component, >= 0. 1.0 = unchanged.
+    sustain_gain : float
+        Gain multiplier for sustain component, >= 0. 1.0 = unchanged.
+    fast_attack, fast_release : float
+        Fast envelope follower times in seconds. Typical: 0.001--0.01 / 0.01--0.05.
+    slow_attack, slow_release : float
+        Slow envelope follower times in seconds. Typical: 0.02--0.1 / 0.1--0.5.
+    """
+
+    def _process(x):
+        ts = _fxdsp.TransientShaper()
+        ts.init(buf.sample_rate)
+        ts.set_attack_gain(attack_gain)
+        ts.set_sustain_gain(sustain_gain)
+        ts.set_fast_attack(fast_attack)
+        ts.set_fast_release(fast_release)
+        ts.set_slow_attack(slow_attack)
+        ts.set_slow_release(slow_release)
+        return ts.process(x)
+
+    return _process_per_channel(buf, _process)
+
+
+# ---------------------------------------------------------------------------
 # Automatic Gain Control
 # ---------------------------------------------------------------------------
 
@@ -220,5 +328,43 @@ def agc(
             out[i] = x64[i] * current_gain
 
         return out.astype(np.float32)
+
+    return _process_per_channel(buf, _process)
+
+
+# ---------------------------------------------------------------------------
+# Lookahead limiter
+# ---------------------------------------------------------------------------
+
+
+def lookahead_limit(
+    buf: AudioBuffer,
+    threshold_db: float = -1.0,
+    lookahead_ms: float = 5.0,
+    release: float = 0.1,
+) -> AudioBuffer:
+    """Brick-wall limiter with lookahead for transparent peak control.
+
+    Delays the audio by *lookahead_ms* so the gain curve can begin
+    reducing *before* a peak arrives, avoiding distortion on transients.
+    The output should never exceed *threshold_db*.
+
+    Parameters
+    ----------
+    threshold_db : float
+        Ceiling in dBFS, <= 0. Typical: -1 to 0.
+    lookahead_ms : float
+        Lookahead time in milliseconds, > 0. Typical: 1--10.
+    release : float
+        Gain recovery time in seconds, > 0. Typical: 0.05--0.5.
+    """
+
+    def _process(x):
+        lim = _fxdsp.LookaheadLimiter()
+        lim.init(buf.sample_rate)
+        lim.set_threshold_db(threshold_db)
+        lim.set_lookahead_ms(lookahead_ms)
+        lim.set_release(release)
+        return lim.process(x)
 
     return _process_per_channel(buf, _process)

@@ -111,6 +111,33 @@ def loudness_lufs(buf: AudioBuffer) -> float:
     return float(-0.691 + 10.0 * np.log10(mean_power + _LOG_EPS))
 
 
+def true_peak_dbtp(buf: AudioBuffer) -> float:
+    """Measure true peak level per ITU-R BS.1770-4.
+
+    Oversamples by 4x to detect inter-sample peaks that exceed the sample
+    peak, then returns the maximum absolute value in dBTP.
+
+    Returns
+    -------
+    float
+        True peak level in dBTP.  Returns ``-inf`` for silence.
+
+    References
+    ----------
+    .. [1] ITU-R BS.1770-4, "Algorithms to measure audio programme loudness
+       and true-peak audio level," International Telecommunication Union, 2015.
+    """
+    from nanodsp.ops import upsample_2x
+
+    # 4x oversampling via two passes of 2x
+    up2 = upsample_2x(buf)
+    up4 = upsample_2x(up2)
+    peak = float(np.max(np.abs(up4.data)))
+    if peak == 0.0:
+        return float("-inf")
+    return float(20.0 * np.log10(peak))
+
+
 def normalize_lufs(
     buf: AudioBuffer,
     target_lufs: float = -14.0,
