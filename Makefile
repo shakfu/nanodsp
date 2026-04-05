@@ -6,7 +6,8 @@
 
 .PHONY: all sync build rebuild test lint format typecheck qa clean \
         distclean wheel sdist dist check publish-test publish upgrade \
-        coverage coverage-html docs docs-serve release help release demos
+        coverage coverage-html docs docs-serve docs-deploy release \
+        help demos
 
 # Default target
 all: build
@@ -96,6 +97,10 @@ docs:
 # Serve documentation locally with live reload
 docs-serve:
 	@uv run mkdocs serve
+
+# Deploy documentation to GitHub Pages
+docs-deploy:
+	@uv run mkdocs gh-deploy --force
 
 # Run all demo scripts (output to build/demo-output/)
 DEMO_INPUT ?= demos/s01.wav
