@@ -29,15 +29,15 @@ def compress(
     buf : AudioBuffer
         Input audio.
     ratio : float
-        Compression ratio (e.g. 4.0 = 4:1).
+        Compression ratio, >= 1.0 (e.g. 4.0 = 4:1). Typical range: 2--20.
     threshold : float
-        Threshold in dB.
+        Threshold in dB, typically -60 to 0.
     attack : float
-        Attack time in seconds.
+        Attack time in seconds, > 0. Typical range: 0.001--0.1.
     release : float
-        Release time in seconds.
+        Release time in seconds, > 0. Typical range: 0.01--1.0.
     makeup : float
-        Makeup gain in dB.
+        Makeup gain in dB. Typical range: 0--30.
     auto_makeup : bool
         If True, automatically compensate for gain reduction.
 
@@ -69,7 +69,7 @@ def limit(buf: AudioBuffer, pre_gain: float = 1.0) -> AudioBuffer:
     buf : AudioBuffer
         Input audio.
     pre_gain : float
-        Gain applied before limiting.
+        Linear gain applied before limiting, > 0. 1.0 = unity.
 
     Returns
     -------
@@ -102,13 +102,13 @@ def noise_gate(
     Parameters
     ----------
     threshold_db : float
-        Gate threshold in dB. Signal below this is attenuated.
+        Gate threshold in dB. Signal below this is attenuated. Typical: -60 to -20.
     attack : float
-        Gate open time in seconds.
+        Gate open time in seconds, > 0. Typical: 0.001--0.01.
     release : float
-        Gate close time in seconds.
+        Gate close time in seconds, > 0. Typical: 0.01--0.1.
     hold_ms : float
-        Hold time in milliseconds after signal drops below threshold
+        Hold time in milliseconds (>= 0) after signal drops below threshold
         before the gate starts closing.
     """
     sr = buf.sample_rate
@@ -178,15 +178,15 @@ def agc(
     Parameters
     ----------
     target_level : float
-        Desired RMS output level (linear).
+        Desired RMS output level (linear), > 0. Typical: 0.1--1.0.
     max_gain_db : float
-        Maximum gain in dB to prevent boosting silence to infinity.
+        Maximum gain in dB to prevent boosting silence to infinity. Typical: 20--60.
     average_len : int
-        Number of samples for the moving-average power estimator.
+        Number of samples for the moving-average power estimator, >= 1. Typical: 50--500.
     attack : float
-        Attack time constant in seconds (fast gain reduction).
+        Attack time constant in seconds (fast gain reduction), >= 0. Typical: 0.001--0.05.
     release : float
-        Release time constant in seconds (slow gain increase).
+        Release time constant in seconds (slow gain increase), >= 0. Typical: 0.01--0.1.
     """
     sr = buf.sample_rate
     max_gain_lin = 10.0 ** (max_gain_db / 20.0)

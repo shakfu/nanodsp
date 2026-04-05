@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 
 from ..buffer import AudioBuffer
@@ -35,6 +37,14 @@ def exciter(
 
     Highpass-filters, saturates to generate harmonics, highpasses again
     to clean up, and blends back into the original.
+
+    Parameters
+    ----------
+    freq : float
+        Crossover frequency in Hz, > 0 and < Nyquist. Typical: 2000--8000.
+    amount : float
+        Harmonic blend amount, >= 0. 0.0 = no effect, 1.0 = equal blend.
+        Typical: 0.1--0.5.
     """
     highs = highpass(buf, freq)
     saturated = saturate(highs, drive=0.7, mode="soft")
@@ -60,6 +70,18 @@ def de_esser(
 
     Extracts the sibilant band, compresses it, and replaces the
     original band with the compressed version.
+
+    Parameters
+    ----------
+    freq : float
+        Center frequency of the sibilant band in Hz, > 0 and < Nyquist.
+        Typical: 4000--10000.
+    threshold_db : float
+        Compression threshold in dB. Typical: -30 to -10.
+    ratio : float
+        Compression ratio, >= 1. Typical: 3--10.
+    bandwidth : float
+        Band width in octaves, > 0. Typical: 1--3.
     """
     bp = bandpass(buf, freq, octaves=bandwidth)
     compressed_bp = compress(
@@ -83,7 +105,21 @@ def parallel_compress(
     attack: float = 0.001,
     release: float = 0.05,
 ) -> AudioBuffer:
-    """Blend heavily compressed signal with dry signal (New York compression)."""
+    """Blend heavily compressed signal with dry signal (New York compression).
+
+    Parameters
+    ----------
+    mix : float
+        Wet/dry blend, 0.0--1.0 (0.0 = fully dry, 1.0 = fully compressed).
+    ratio : float
+        Compression ratio, >= 1. Typical: 4--20.
+    threshold_db : float
+        Compression threshold in dB. Typical: -40 to -10.
+    attack : float
+        Attack time in seconds, > 0. Typical: 0.001--0.01.
+    release : float
+        Release time in seconds, > 0. Typical: 0.01--0.2.
+    """
     compressed = compress(
         buf, ratio=ratio, threshold=threshold_db, attack=attack, release=release
     )
@@ -643,7 +679,7 @@ def shimmer_reverb(
     decay: float = 0.8,
     shimmer: float = 0.3,
     shift_semitones: float = 12.0,
-    preset: str = "hall",
+    preset: Literal["room", "hall", "plate", "chamber", "cathedral"] = "hall",
 ) -> AudioBuffer:
     """Reverb with a pitch-shifted shimmer layer.
 
@@ -824,7 +860,7 @@ def telephone(
 
 def gated_reverb(
     buf: AudioBuffer,
-    preset: str = "plate",
+    preset: Literal["room", "hall", "plate", "chamber", "cathedral"] = "plate",
     decay: float = 0.7,
     gate_threshold_db: float = -30.0,
     gate_hold_ms: float = 50.0,

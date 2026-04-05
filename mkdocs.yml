@@ -64,7 +64,19 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Algorithm Guide: guide.md
+  - Guide:
+    - guide/index.md
+    - Filters: guide/filters.md
+    - Dynamics: guide/dynamics.md
+    - Saturation: guide/saturation.md
+    - Reverb: guide/reverb.md
+    - Modulation: guide/modulation.md
+    - Spectral: guide/spectral.md
+    - Synthesis: guide/synthesis.md
+    - Analysis: guide/analysis.md
+    - Composed Effects: guide/composed.md
+    - Granular: guide/granular.md
+    - Streaming: guide/streaming.md
   - CLI: cli.md
   - API Reference:
     - api/index.md

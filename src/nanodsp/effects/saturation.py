@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 
 from ..buffer import AudioBuffer
@@ -17,7 +19,7 @@ from .._core import fxdsp as _fxdsp
 def saturate(
     buf: AudioBuffer,
     drive: float = 0.5,
-    mode: str = "soft",
+    mode: Literal["soft", "hard", "tape"] = "soft",
 ) -> AudioBuffer:
     """Apply saturation/distortion.
 
@@ -84,7 +86,8 @@ def aa_hard_clip(buf: AudioBuffer, drive: float = 1.0) -> AudioBuffer:
     buf : AudioBuffer
         Input audio.
     drive : float
-        Input gain multiplier before clipping.
+        Input gain multiplier before clipping, > 0. 1.0 = unity; higher values
+        push the signal harder into the clipper.
 
     Returns
     -------
@@ -109,7 +112,7 @@ def aa_soft_clip(buf: AudioBuffer, drive: float = 1.0) -> AudioBuffer:
     buf : AudioBuffer
         Input audio.
     drive : float
-        Input gain multiplier before saturation.
+        Input gain multiplier before saturation, > 0. 1.0 = unity.
 
     Returns
     -------
@@ -134,7 +137,8 @@ def aa_wavefold(buf: AudioBuffer, drive: float = 1.0) -> AudioBuffer:
     buf : AudioBuffer
         Input audio.
     drive : float
-        Input gain multiplier before folding.
+        Input gain multiplier before folding, > 0. 1.0 = unity; values > 1
+        create additional folds.
 
     Returns
     -------

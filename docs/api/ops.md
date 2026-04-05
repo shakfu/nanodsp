@@ -105,7 +105,7 @@ trimmed = ops.trim_silence(buf, threshold_db=-60.0, pad_frames=100)
 
 # Apply fades
 faded = ops.fade_in(buf, duration_ms=10.0)
-faded = ops.fade_out(buf, duration_ms=50.0, curve="exp")
+faded = ops.fade_out(buf, duration_ms=50.0, curve="ease_out")
 ```
 
 ### LFO

@@ -38,9 +38,15 @@ def oscillator(
 
     Parameters
     ----------
+    freq : float
+        Frequency in Hz, > 0 and < Nyquist.
+    amp : float
+        Output amplitude, >= 0. 1.0 = full scale.
     waveform : int or str
-        Waveform constant or name: "sine", "tri", "saw", "ramp", "square",
-        "polyblep_tri", "polyblep_saw", "polyblep_square".
+        Waveform constant or name: ``"sine"``, ``"tri"``, ``"saw"``, ``"ramp"``,
+        ``"square"``, ``"polyblep_tri"``, ``"polyblep_saw"``, ``"polyblep_square"``.
+    pw : float
+        Pulse width (for square/pulse waveforms), 0.0--1.0.
     """
     wf = _resolve_waveform(waveform, _WAVEFORM_MAP)
     osc = _dsy_osc.Oscillator()
@@ -60,7 +66,17 @@ def fm2(
     index: float = 1.0,
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
-    """Generate 2-operator FM synthesis."""
+    """Generate 2-operator FM synthesis.
+
+    Parameters
+    ----------
+    freq : float
+        Carrier frequency in Hz, > 0 and < Nyquist.
+    ratio : float
+        Modulator/carrier frequency ratio, > 0. Integer ratios produce harmonic timbres.
+    index : float
+        Modulation index, >= 0. Higher = more sidebands. Typical: 0--10.
+    """
     fm = _dsy_osc.Fm2()
     fm.init(sample_rate)
     fm.set_frequency(freq)
@@ -77,7 +93,17 @@ def formant_oscillator(
     phase_shift: float = 0.0,
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
-    """Generate formant oscillator signal."""
+    """Generate formant oscillator signal.
+
+    Parameters
+    ----------
+    carrier_freq : float
+        Carrier frequency in Hz, > 0 and < Nyquist.
+    formant_freq : float
+        Formant frequency in Hz, > 0 and < Nyquist.
+    phase_shift : float
+        Phase shift in radians. Typical: 0 to 2*pi.
+    """
     fo = _dsy_osc.FormantOscillator()
     fo.init(sample_rate)
     fo.set_carrier_freq(carrier_freq)

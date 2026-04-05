@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 
 from ..buffer import AudioBuffer
@@ -9,6 +11,18 @@ from .._helpers import _process_per_channel, _stk_fx
 from .._core import madronalib as _madronalib
 from .._core import stk as _stk
 from .._core import fxdsp as _fxdsp
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _to_mono(buf: AudioBuffer) -> np.ndarray:
+    """Downmix to mono float32 1D array."""
+    if buf.channels > 1:
+        return np.mean(buf.data, axis=0).astype(np.float32)
+    return buf.data[0].copy()
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +55,7 @@ _REVERB_PRESETS: dict[str, dict] = {
 
 def reverb(
     buf: AudioBuffer,
-    preset: str = "hall",
+    preset: Literal["room", "hall", "plate", "chamber", "cathedral"] = "hall",
     mix: float = 0.3,
     decay: float = 0.8,
     damping: float = 0.5,
@@ -52,15 +66,15 @@ def reverb(
     Parameters
     ----------
     preset : str
-        One of 'room', 'hall', 'plate', 'chamber', 'cathedral'.
+        One of ``'room'``, ``'hall'``, ``'plate'``, ``'chamber'``, ``'cathedral'``.
     mix : float
-        Wet/dry blend (0.0 = fully dry, 1.0 = fully wet).
+        Wet/dry blend, 0.0--1.0 (0.0 = fully dry, 1.0 = fully wet).
     decay : float
-        Feedback gain per delay line (0.0 to <1.0).
+        Feedback gain per delay line, 0.0--<1.0 (values >= 1.0 are unstable).
     damping : float
-        Controls lowpass filtering in feedback (0.0 = bright, 1.0 = dark).
+        Lowpass filtering in feedback, 0.0--1.0 (0.0 = bright, 1.0 = dark).
     pre_delay_ms : float
-        Pre-delay in milliseconds before reverb onset.
+        Pre-delay in milliseconds before reverb onset, >= 0.
     """
     if preset not in _REVERB_PRESETS:
         raise ValueError(
@@ -74,10 +88,7 @@ def reverb(
     delay_times = [float(d * sr_scale) for d in cfg["delays"]]
 
     # Mono-sum input for FDN processing
-    if buf.channels > 1:
-        mono_data = np.mean(buf.data, axis=0).astype(np.float32)
-    else:
-        mono_data = buf.data[0].copy()
+    mono_data = _to_mono(buf)
 
     # Pre-delay: prepend silence
     if pre_delay_ms > 0:
@@ -150,7 +161,17 @@ def schroeder_reverb(
     diffusion: float = 0.5,
     mod_depth: float = 0.0,
 ) -> AudioBuffer:
-    """Schroeder reverberator (4 parallel combs + 2 series allpasses)."""
+    """Schroeder reverberator (4 parallel combs + 2 series allpasses).
+
+    Parameters
+    ----------
+    feedback : float
+        Comb filter feedback, 0.0--<1.0. Higher = longer tail.
+    diffusion : float
+        Allpass diffusion, 0.0--1.0. Higher = smoother.
+    mod_depth : float
+        LFO modulation depth, >= 0. 0.0 = no modulation.
+    """
 
     def _process(x):
         rev = _fxdsp.SchroederReverb()
@@ -169,7 +190,17 @@ def moorer_reverb(
     diffusion: float = 0.7,
     mod_depth: float = 0.1,
 ) -> AudioBuffer:
-    """Moorer reverberator (early reflections + 4 combs + 2 allpasses)."""
+    """Moorer reverberator (early reflections + 4 combs + 2 allpasses).
+
+    Parameters
+    ----------
+    feedback : float
+        Comb filter feedback, 0.0--<1.0. Higher = longer tail.
+    diffusion : float
+        Allpass diffusion, 0.0--1.0. Higher = smoother.
+    mod_depth : float
+        LFO modulation depth, >= 0. 0.0 = no modulation.
+    """
 
     def _process(x):
         rev = _fxdsp.MoorerReverb()
@@ -189,7 +220,7 @@ def moorer_reverb(
 
 def stk_reverb(
     buf: AudioBuffer,
-    algorithm: str = "freeverb",
+    algorithm: Literal["freeverb", "jcrev", "nrev", "prcrev"] = "freeverb",
     mix: float = 0.3,
     room_size: float = 0.5,
     damping: float = 0.5,
@@ -200,15 +231,15 @@ def stk_reverb(
     Parameters
     ----------
     algorithm : str
-        One of 'freeverb', 'jcrev', 'nrev', 'prcrev'.
+        One of ``'freeverb'``, ``'jcrev'``, ``'nrev'``, ``'prcrev'``.
     mix : float
-        Wet/dry mix (0.0 = dry, 1.0 = fully wet).
+        Wet/dry mix, 0.0--1.0 (0.0 = dry, 1.0 = fully wet).
     room_size : float
-        Room size (FreeVerb only, 0.0-1.0).
+        Room size (FreeVerb only), 0.0--1.0.
     damping : float
-        Damping (FreeVerb only, 0.0-1.0).
+        Damping (FreeVerb only), 0.0--1.0.
     t60 : float
-        Reverberation time in seconds (JCRev, NRev, PRCRev).
+        Reverberation time in seconds (JCRev, NRev, PRCRev), > 0. Typical: 0.1--10.
     """
     _stk.set_sample_rate(buf.sample_rate)
 
@@ -235,11 +266,7 @@ def stk_reverb(
         )
 
     # Process mono input (sum to mono if stereo)
-    if buf.channels > 1:
-        mono = np.mean(buf.data, axis=0).astype(np.float32)
-    else:
-        mono = buf.data[0].copy()
-    mono = np.ascontiguousarray(mono, dtype=np.float32)
+    mono = np.ascontiguousarray(_to_mono(buf), dtype=np.float32)
 
     if algo == "freeverb":
         # FreeVerb process takes [2, N] and returns [2, N]
@@ -269,6 +296,15 @@ def stk_chorus(
     """Apply STK Chorus effect.
 
     Returns stereo output from mono or stereo input.
+
+    Parameters
+    ----------
+    mod_depth : float
+        Modulation depth, >= 0. Typical: 0.01--0.1.
+    mod_freq : float
+        Modulation frequency in Hz, > 0. Typical: 0.1--5.0.
+    mix : float
+        Wet/dry mix, 0.0--1.0.
     """
     _stk.set_sample_rate(buf.sample_rate)
 
@@ -277,11 +313,7 @@ def stk_chorus(
     ch.set_mod_frequency(mod_freq)
     ch.set_effect_mix(mix)
 
-    if buf.channels > 1:
-        mono = np.mean(buf.data, axis=0).astype(np.float32)
-    else:
-        mono = buf.data[0].copy()
-    mono = np.ascontiguousarray(mono, dtype=np.float32)
+    mono = np.ascontiguousarray(_to_mono(buf), dtype=np.float32)
 
     # STK Chorus.process returns [2, N]
     out = np.asarray(ch.process(mono), dtype=np.float32)

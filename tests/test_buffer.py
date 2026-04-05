@@ -56,6 +56,14 @@ class TestConstruction:
         with pytest.raises(ValueError, match="1D or 2D"):
             AudioBuffer(np.zeros((2, 3, 4)))
 
+    def test_zero_sample_rate_raises(self):
+        with pytest.raises(ValueError, match="sample_rate must be positive"):
+            AudioBuffer(np.zeros((1, 100), dtype=np.float32), sample_rate=0.0)
+
+    def test_negative_sample_rate_raises(self):
+        with pytest.raises(ValueError, match="sample_rate must be positive"):
+            AudioBuffer(np.zeros((1, 100), dtype=np.float32), sample_rate=-1.0)
+
 
 # =========================================================================
 # Properties

@@ -1,6 +1,6 @@
 # Effects
 
-The `nanodsp.effects` package contains 79+ DSP functions organized into submodules.
+The `nanodsp.effects` package contains 77 DSP functions organized into submodules.
 
 Import from the specific submodule you need:
 

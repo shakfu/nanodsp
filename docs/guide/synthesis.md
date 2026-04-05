@@ -1,0 +1,127 @@
+# Synthesis
+
+Sound generation using DaisySP, STK, PolyBLEP, and fxdsp backends.
+
+## DaisySP oscillators
+
+```python
+from nanodsp import synthesis
+
+# Basic waveforms
+sine = synthesis.oscillator(frames=48000, freq=440.0, waveform="sine")
+saw = synthesis.oscillator(frames=48000, freq=220.0, amp=0.5, waveform="saw")
+square = synthesis.oscillator(frames=48000, freq=330.0, waveform="square", pw=0.3)
+tri = synthesis.oscillator(frames=48000, freq=440.0, waveform="tri")
+
+# Anti-aliased variants
+poly_saw = synthesis.oscillator(frames=48000, freq=440.0, waveform="polyblep_saw")
+
+# Band-limited oscillator
+bl = synthesis.bl_oscillator(frames=48000, freq=440.0, waveform="saw")
+```
+
+## FM synthesis
+
+Two-operator FM: a modulator oscillator modulates the frequency of a carrier. The `ratio` controls the modulator/carrier frequency ratio (integers produce harmonic timbres), and `index` controls the modulation depth.
+
+```python
+# Classic FM bell
+bell = synthesis.fm2(frames=48000, freq=440.0, ratio=1.4, index=5.0)
+
+# Harmonic FM (integer ratio)
+bright = synthesis.fm2(frames=48000, freq=220.0, ratio=2.0, index=3.0)
+
+# Formant oscillator (carrier + formant frequency control)
+formant = synthesis.formant_oscillator(
+    frames=48000, carrier_freq=110.0, formant_freq=800.0
+)
+```
+
+## Band-limited oscillators
+
+Aliasing-free oscillator algorithms for clean digital synthesis:
+
+```python
+# PolyBLEP -- efficient, 14 waveforms
+saw = synthesis.polyblep(frames=48000, freq=440.0, waveform="sawtooth")
+sq = synthesis.polyblep(frames=48000, freq=440.0, waveform="square")
+tri = synthesis.polyblep(frames=48000, freq=440.0, waveform="triangle")
+
+# BLIT -- configurable harmonics
+blit = synthesis.blit_saw(frames=48000, freq=220.0, harmonics=20)
+blit_sq = synthesis.blit_square(frames=48000, freq=220.0)
+
+# DPW -- differentiated parabolic wave
+dpw = synthesis.dpw_saw(frames=48000, freq=440.0)
+pulse = synthesis.dpw_pulse(frames=48000, freq=440.0, duty=0.3)
+
+# MinBLEP -- highest antialiasing quality
+mb = synthesis.minblep(frames=48000, freq=440.0, waveform="saw")
+mb_sq = synthesis.minblep(frames=48000, freq=440.0, waveform="square", pulse_width=0.3)
+```
+
+## Noise generators
+
+```python
+noise = synthesis.white_noise(frames=48000, amp=0.5)
+clocked = synthesis.clocked_noise(frames=48000, freq=1000.0)    # sample-and-hold
+impulses = synthesis.dust(frames=48000, density=100.0)           # sparse Poisson impulses
+```
+
+## Drum synthesis
+
+Physically-inspired analog drum models from DaisySP:
+
+```python
+# Analog models
+kick = synthesis.analog_bass_drum(frames=48000, freq=60.0, decay=0.5, accent=0.8)
+snare = synthesis.analog_snare_drum(frames=48000, freq=200.0, snappy=0.7, decay=0.4)
+hat = synthesis.hihat(frames=48000, freq=3000.0, decay=0.3, noisiness=0.8)
+
+# Synthesis-focused variants with extra controls
+syn_kick = synthesis.synthetic_bass_drum(
+    frames=48000, freq=60.0, dirtiness=0.3, fm_env_amount=0.5
+)
+syn_snare = synthesis.synthetic_snare_drum(
+    frames=48000, freq=200.0, fm_amount=0.3
+)
+```
+
+## Physical modeling
+
+```python
+from nanodsp.buffer import AudioBuffer
+
+# Karplus-Strong plucked string
+excitation = AudioBuffer.noise(frames=48000, seed=42)
+plucked = synthesis.karplus_strong(excitation, freq_hz=440.0, brightness=0.5, damping=0.3)
+
+# Simple pluck
+p = synthesis.pluck(frames=48000, freq=440.0, decay=0.95, damp=0.9)
+
+# Modal voice (resonant body excited by impulse)
+modal = synthesis.modal_voice(frames=48000, freq=440.0, structure=0.5, brightness=0.6)
+
+# Bowed string
+bowed = synthesis.string_voice(frames=48000, freq=220.0, brightness=0.6)
+
+# Water drop
+drop = synthesis.drip(frames=48000, dettack=0.01)
+```
+
+## STK instruments
+
+Physical modeling instruments from the Synthesis ToolKit. Available: `clarinet`, `flute`, `brass`, `bowed`, `plucked`, `sitar`, `stifkarp`, `saxofony`, `recorder`, `blowbotl`, `blowhole`, `whistle`.
+
+```python
+# Single note
+clarinet = synthesis.synth_note("clarinet", freq=440.0, duration=1.0, velocity=0.8)
+flute = synthesis.synth_note("flute", freq=880.0, duration=0.5)
+
+# Sequence of notes
+melody = synthesis.synth_sequence("flute", notes=[
+    (440.0, 0.0, 0.5),       # (freq_hz, start_time_sec, duration_sec)
+    (554.37, 0.5, 0.5),
+    (659.26, 1.0, 1.0),
+])
+```

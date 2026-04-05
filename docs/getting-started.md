@@ -50,14 +50,14 @@ buf = AudioBuffer.zeros(channels=1, frames=4096)
 from nanodsp.effects import filters, dynamics
 
 # Direct function calls
-filtered = filters.lowpass(buf, freq=1000.0)
+filtered = filters.lowpass(buf, cutoff_hz=1000.0)
 compressed = dynamics.compress(filtered, threshold=-18.0, ratio=4.0)
 
 # Pipeline style
 result = (
     buf
-    .pipe(filters.highpass, freq=80.0)
-    .pipe(filters.lowpass, freq=12000.0)
+    .pipe(filters.highpass, cutoff_hz=80.0)
+    .pipe(filters.lowpass, cutoff_hz=12000.0)
     .pipe(dynamics.compress, threshold=-18.0)
 )
 ```

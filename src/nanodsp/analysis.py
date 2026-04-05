@@ -8,6 +8,14 @@ from nanodsp.buffer import AudioBuffer
 from nanodsp.spectral import stft
 from nanodsp._core import filters, madronalib as _madronalib
 
+# Small constants to prevent log(0) and division-by-zero in numerical computations.
+# _LOG_EPS is intentionally tiny (1e-20) because it guards log10() in LUFS loudness
+# metering where even 1e-10 would bias quiet-signal measurements.  _DIV_EPS is
+# larger (1e-10) because it guards ordinary division and a tighter value would
+# amplify floating-point noise without improving accuracy.
+_LOG_EPS: float = 1e-20
+_DIV_EPS: float = 1e-10
+
 
 # ---------------------------------------------------------------------------
 # Loudness metering (ITU-R BS.1770-4)
@@ -33,11 +41,21 @@ def _k_weight(x: np.ndarray, sample_rate: float) -> np.ndarray:
 def loudness_lufs(buf: AudioBuffer) -> float:
     """Measure integrated loudness per ITU-R BS.1770-4.
 
+    Implements the gated loudness measurement algorithm defined in
+    ITU-R BS.1770-4 (10/2015), "Algorithms to measure audio programme
+    loudness and true-peak audio level."
+
     Returns
     -------
     float
         Integrated loudness in LUFS. Returns ``-inf`` for silence or
         signals shorter than 400 ms.
+
+    References
+    ----------
+    .. [1] ITU-R BS.1770-4, "Algorithms to measure audio programme loudness
+       and true-peak audio level," International Telecommunication Union, 2015.
+       https://www.itu.int/rec/R-REC-BS.1770
     """
     sr = buf.sample_rate
     block_samples = int(sr * 0.4)  # 400 ms
@@ -73,8 +91,7 @@ def loudness_lufs(buf: AudioBuffer) -> float:
         block_power[i] = power
 
     # Convert to LUFS
-    eps = 1e-20
-    block_lufs = -0.691 + 10.0 * np.log10(block_power + eps)
+    block_lufs = -0.691 + 10.0 * np.log10(block_power + _LOG_EPS)
 
     # Absolute gate: -70 LUFS
     abs_gate_mask = block_lufs >= -70.0
@@ -83,7 +100,7 @@ def loudness_lufs(buf: AudioBuffer) -> float:
 
     # Relative gate: mean of surviving blocks - 10 dB
     mean_power_abs = np.mean(block_power[abs_gate_mask])
-    rel_gate_lufs = -0.691 + 10.0 * np.log10(mean_power_abs + eps) - 10.0
+    rel_gate_lufs = -0.691 + 10.0 * np.log10(mean_power_abs + _LOG_EPS) - 10.0
     rel_gate_mask = abs_gate_mask & (block_lufs >= rel_gate_lufs)
 
     if not np.any(rel_gate_mask):
@@ -91,7 +108,7 @@ def loudness_lufs(buf: AudioBuffer) -> float:
 
     # Integrated loudness
     mean_power = np.mean(block_power[rel_gate_mask])
-    return float(-0.691 + 10.0 * np.log10(mean_power + eps))
+    return float(-0.691 + 10.0 * np.log10(mean_power + _LOG_EPS))
 
 
 def normalize_lufs(
@@ -103,7 +120,7 @@ def normalize_lufs(
     Parameters
     ----------
     target_lufs : float
-        Target integrated loudness in LUFS.
+        Target integrated loudness in LUFS. Typical: -23 (broadcast) to -14 (streaming).
 
     Raises
     ------
@@ -190,7 +207,15 @@ def spectral_rolloff(
 ) -> np.ndarray:
     """Frequency below which *percentile* of spectral energy lies.
 
-    Returns Hz values shaped [num_frames] (mono) or [channels, num_frames].
+    Parameters
+    ----------
+    percentile : float
+        Energy fraction, 0.0--1.0 (e.g. 0.85 = 85th percentile).
+
+    Returns
+    -------
+    np.ndarray
+        Hz values shaped ``[num_frames]`` (mono) or ``[channels, num_frames]``.
     """
     mag, freqs, _ = _stft_magnitudes(buf, window_size, hop_size)
     energy = mag**2
@@ -245,11 +270,12 @@ def spectral_flatness_curve(
     Returns [num_frames] (mono) or [channels, num_frames].
     """
     mag, _, _ = _stft_magnitudes(buf, window_size, hop_size)
-    eps = 1e-10
-    log_mag = np.log(mag + eps)
+    log_mag = np.log(mag + _DIV_EPS)
     geo_mean = np.exp(np.mean(log_mag, axis=2))
     arith_mean = np.mean(mag, axis=2)
-    flatness = np.where(arith_mean > eps, geo_mean / arith_mean, 0.0).astype(np.float32)
+    flatness = np.where(arith_mean > _DIV_EPS, geo_mean / arith_mean, 0.0).astype(
+        np.float32
+    )
     if flatness.shape[0] == 1:
         return flatness[0]
     return flatness
@@ -305,9 +331,31 @@ def pitch_detect(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Detect fundamental frequency using the YIN algorithm.
 
-    Returns (frequencies, confidences) where:
-    - frequencies: F0 in Hz (0.0 where unvoiced), shape [num_frames] or [channels, num_frames]
-    - confidences: 0.0-1.0, shape [num_frames] or [channels, num_frames]
+    Implements the YIN autocorrelation-based F0 estimator with cumulative
+    mean normalized difference function and parabolic interpolation.
+
+    Parameters
+    ----------
+    fmin : float
+        Minimum detectable frequency in Hz, > 0. Typical: 50--200.
+    fmax : float
+        Maximum detectable frequency in Hz, > fmin. Typical: 2000--4000.
+    threshold : float
+        YIN aperiodicity threshold, 0.0--1.0. Lower = stricter voicing
+        detection. Typical: 0.1--0.3.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        (frequencies, confidences) where frequencies are F0 in Hz (0.0 where
+        unvoiced) and confidences are 0.0--1.0.  Shape is ``[num_frames]``
+        for mono or ``[channels, num_frames]`` for multi-channel.
+
+    References
+    ----------
+    .. [1] A. de Cheveigne and H. Kawahara, "YIN, a fundamental frequency
+       estimator for speech and music," J. Acoust. Soc. Am., vol. 111,
+       no. 4, pp. 1917--1930, 2002.
     """
     if method != "yin":
         raise ValueError(f"Unknown pitch detection method: {method!r}")
@@ -656,6 +704,9 @@ def gcc_phat(
 ) -> tuple[float, np.ndarray]:
     """Estimate time delay between two signals using GCC-PHAT.
 
+    Implements the Generalized Cross-Correlation with Phase Transform
+    (GCC-PHAT) method for robust time-delay estimation.
+
     Parameters
     ----------
     buf : AudioBuffer
@@ -668,8 +719,14 @@ def gcc_phat(
     Returns
     -------
     tuple[float, np.ndarray]
-        (delay_seconds, correlation) — delay in seconds (positive means *buf*
+        (delay_seconds, correlation) -- delay in seconds (positive means *buf*
         is delayed relative to *ref*), and the full GCC-PHAT correlation array.
+
+    References
+    ----------
+    .. [1] C. Knapp and G. Carter, "The generalized correlation method for
+       estimation of time delay," IEEE Trans. Acoust., Speech, Signal Process.,
+       vol. 24, no. 4, pp. 320--327, 1976.
     """
     sr = sample_rate if sample_rate is not None else buf.sample_rate
 
@@ -696,8 +753,7 @@ def gcc_phat(
     # Cross-spectrum with phase transform (PHAT) weighting
     cross = A * np.conj(B)
     magnitude = np.abs(cross)
-    eps = 1e-10
-    cross_phat = cross / (magnitude + eps)
+    cross_phat = cross / (magnitude + _DIV_EPS)
 
     corr = np.fft.irfft(cross_phat, n=fft_size)
 

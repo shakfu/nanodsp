@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Literal
 
 import numpy as np
 
@@ -26,11 +26,14 @@ _WINDOW_FUNCTIONS: dict[str, Callable] = {
 }
 
 
+WindowType = Literal["hann", "hamming", "blackman", "bartlett", "rectangular", "ones"]
+
+
 def stft(
     buf: AudioBuffer,
     window_size: int = 2048,
     hop_size: int | None = None,
-    window: str = "hann",
+    window: WindowType = "hann",
 ) -> Spectrogram:
     """Short-time Fourier transform using windowed RealFFT + overlap.
 
@@ -39,9 +42,10 @@ def stft(
     buf : AudioBuffer
         Input audio.
     window_size : int
-        Analysis window length in samples.
+        Analysis window length in samples, must be > 0. Typical: 512--4096.
     hop_size : int or None
-        Hop between successive windows.  Defaults to ``window_size // 4``.
+        Hop between successive windows, > 0.  Defaults to ``window_size // 4``.
+        Smaller hops give finer time resolution at higher computational cost.
     window : str
         Window function name. One of ``"hann"`` (default), ``"hamming"``,
         ``"blackman"``, ``"bartlett"``, ``"rectangular"``/``"ones"``.
@@ -91,7 +95,7 @@ def stft(
     )
 
 
-def istft(spec: Spectrogram, window: str = "hann") -> AudioBuffer:
+def istft(spec: Spectrogram, window: WindowType = "hann") -> AudioBuffer:
     """Inverse STFT via overlap-add with COLA normalization.
 
     Parameters
@@ -264,9 +268,10 @@ def spectral_gate(
         Input spectrogram.
     threshold_db : float
         Magnitude threshold in dB.  Bins at or above this pass through.
+        Typical: -60 to -20.
     noise_floor_db : float
         Attenuation applied to bins below the threshold, in dB relative to
-        the threshold.
+        the threshold.  Should be < threshold_db. Typical: -80 to -40.
 
     Returns
     -------
@@ -295,9 +300,9 @@ def spectral_emphasis(
     spec : Spectrogram
         Input spectrogram.
     low_db : float
-        Gain at DC in dB.
+        Gain at DC in dB. Typical: -12 to +12.
     high_db : float
-        Gain at Nyquist in dB.
+        Gain at Nyquist in dB. Typical: -12 to +12.
 
     Returns
     -------
@@ -365,6 +370,9 @@ def freq_to_bin(spec: Spectrogram, freq_hz: float) -> int:
 def time_stretch(spec: Spectrogram, rate: float) -> Spectrogram:
     """Phase-vocoder time stretch.
 
+    Resamples the STFT magnitude and propagates phase using instantaneous
+    frequency estimation, following the classic phase vocoder approach.
+
     Parameters
     ----------
     spec : Spectrogram
@@ -382,6 +390,14 @@ def time_stretch(spec: Spectrogram, rate: float) -> Spectrogram:
     ------
     ValueError
         If *rate* <= 0.
+
+    References
+    ----------
+    .. [1] J. Flanagan and R. Golden, "Phase vocoder," Bell Syst. Tech. J.,
+       vol. 45, no. 9, pp. 1493--1509, 1966.
+    .. [2] J. Laroche and M. Dolson, "Improved phase vocoder time-scale
+       modification of audio," IEEE Trans. Speech Audio Process., vol. 7,
+       no. 3, pp. 323--332, 1999.
     """
     if rate <= 0:
         raise ValueError(f"Rate must be > 0, got {rate}")
@@ -716,13 +732,14 @@ def spectral_denoise(
     spec : Spectrogram
         Input spectrogram.
     noise_frames : int
-        Number of leading STFT frames used to build the noise profile.
+        Number of leading STFT frames used to build the noise profile, >= 1.
+        Typical: 5--20.
     reduction_db : float
         Attenuation in dB applied to bins at or below the noise floor.
-        More negative = more aggressive reduction.
+        More negative = more aggressive reduction. Typical: -40 to -10.
     smoothing : int
         If > 0, apply a moving-average of this width (in bins) to the
-        noise profile, reducing musical-noise artefacts.
+        noise profile, reducing musical-noise artefacts. Typical: 0--5.
 
     Returns
     -------
@@ -780,10 +797,10 @@ def eq_match(
     target : AudioBuffer
         Reference audio whose spectral envelope is matched.
     window_size : int
-        STFT window size.
+        STFT window size, > 0. Typical: 2048--8192.
     smoothing : int
         If > 0, apply a moving-average of this width (in bins) to the
-        correction curve.
+        correction curve. Typical: 0--20.
 
     Raises
     ------
@@ -810,6 +827,7 @@ def eq_match(
 
     eps = 1e-10
     correction = tgt_avg / (src_avg + eps)
+    # Cap per-bin gain at +40 dB (100x) to prevent EQ runaway on near-silent bins.
     correction = np.clip(correction, 0.0, 100.0).astype(np.float32)
 
     if smoothing > 0:

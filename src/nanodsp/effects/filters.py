@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 
 from ..buffer import AudioBuffer
@@ -626,7 +628,7 @@ def ladder_filter(
     buf: AudioBuffer,
     freq_hz: float = 1000.0,
     resonance: float = 0.0,
-    mode: str = "lp24",
+    mode: Literal["lp24", "lp12", "bp24", "bp12", "hp24", "hp12"] = "lp24",
     drive: float = 1.0,
 ) -> AudioBuffer:
     """Ladder filter with selectable mode.
@@ -634,7 +636,7 @@ def ladder_filter(
     Parameters
     ----------
     mode : str
-        One of "lp24", "lp12", "bp24", "bp12", "hp24", "hp12".
+        One of ``"lp24"``, ``"lp12"``, ``"bp24"``, ``"bp12"``, ``"hp24"``, ``"hp12"``.
     drive : float
         Input drive (multiplier). 1.0 = unity gain (no drive), >1.0 adds saturation.
     """
@@ -847,9 +849,10 @@ def va_moog_ladder(
     buf : AudioBuffer
         Input audio.
     cutoff_hz : float
-        Cutoff frequency in Hz.
+        Cutoff frequency in Hz, > 0 and < Nyquist.
     q : float
-        Resonance / Q factor.
+        Resonance / Q factor, > 0. Higher values increase resonance at cutoff.
+        Typical: 0.5--10.
 
     Returns
     -------
@@ -869,9 +872,10 @@ def va_moog_half_ladder(
     buf : AudioBuffer
         Input audio.
     cutoff_hz : float
-        Cutoff frequency in Hz.
+        Cutoff frequency in Hz, > 0 and < Nyquist.
     q : float
-        Resonance / Q factor.
+        Resonance / Q factor, > 0. Higher values increase resonance at cutoff.
+        Typical: 0.5--10.
 
     Returns
     -------
@@ -891,9 +895,10 @@ def va_diode_ladder(
     buf : AudioBuffer
         Input audio.
     cutoff_hz : float
-        Cutoff frequency in Hz.
+        Cutoff frequency in Hz, > 0 and < Nyquist.
     q : float
-        Resonance / Q factor.
+        Resonance / Q factor, > 0. Higher values increase resonance at cutoff.
+        Typical: 0.5--10.
 
     Returns
     -------
@@ -913,9 +918,10 @@ def va_korg35_lpf(
     buf : AudioBuffer
         Input audio.
     cutoff_hz : float
-        Cutoff frequency in Hz.
+        Cutoff frequency in Hz, > 0 and < Nyquist.
     q : float
-        Resonance / Q factor.
+        Resonance / Q factor, > 0. Higher values increase resonance at cutoff.
+        Typical: 0.5--10.
 
     Returns
     -------
@@ -935,9 +941,10 @@ def va_korg35_hpf(
     buf : AudioBuffer
         Input audio.
     cutoff_hz : float
-        Cutoff frequency in Hz.
+        Cutoff frequency in Hz, > 0 and < Nyquist.
     q : float
-        Resonance / Q factor.
+        Resonance / Q factor, > 0. Higher values increase resonance at cutoff.
+        Typical: 0.5--10.
 
     Returns
     -------
@@ -951,7 +958,7 @@ def va_oberheim(
     buf: AudioBuffer,
     cutoff_hz: float = 1000.0,
     q: float = 1.0,
-    mode: str = "lpf",
+    mode: Literal["lpf", "hpf", "bpf", "bsf"] = "lpf",
 ) -> AudioBuffer:
     """Oberheim multi-mode state-variable filter (virtual analog).
 
@@ -960,11 +967,11 @@ def va_oberheim(
     buf : AudioBuffer
         Input audio.
     cutoff_hz : float
-        Cutoff frequency in Hz.
+        Cutoff frequency in Hz, > 0 and < Nyquist.
     q : float
-        Resonance / Q factor.
+        Resonance / Q factor, > 0. Typical: 0.5--10.
     mode : str
-        One of 'lpf', 'hpf', 'bpf', 'bsf' (notch).
+        One of ``"lpf"``, ``"hpf"``, ``"bpf"``, ``"bsf"`` (notch).
 
     Returns
     -------

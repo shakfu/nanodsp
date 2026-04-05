@@ -6,7 +6,10 @@ transparently with the 1D and 2D C++ bindings in nanodsp._core.
 
 from __future__ import annotations
 
+from typing import Any, Callable, Literal, overload
+
 import numpy as np
+from numpy.typing import ArrayLike
 
 
 class AudioBuffer:
@@ -17,22 +20,27 @@ class AudioBuffer:
     data : array-like or AudioBuffer
         Audio samples.  1D input is normalised to ``[1, N]``.
     sample_rate : float
-        Sample rate in Hz.
+        Sample rate in Hz.  Must be positive (> 0).
     channel_layout : str or None
         E.g. ``'mono'``, ``'stereo'``.  Inferred from channel count when *None*.
     label : str or None
         Free-form label carried as metadata.
+
+    Raises
+    ------
+    ValueError
+        If *data* is not 1D or 2D, or if *sample_rate* is not positive.
     """
 
     __slots__ = ("_data", "_sample_rate", "_channel_layout", "_label")
 
     def __init__(
         self,
-        data,
+        data: ArrayLike | AudioBuffer,
         sample_rate: float = 48000.0,
         channel_layout: str | None = None,
         label: str | None = None,
-    ):
+    ) -> None:
         if isinstance(data, AudioBuffer):
             arr = data._data.copy()
         else:
@@ -49,8 +57,12 @@ class AudioBuffer:
         if not arr.flags["C_CONTIGUOUS"]:
             arr = np.ascontiguousarray(arr)
 
+        sr = float(sample_rate)
+        if sr <= 0:
+            raise ValueError(f"sample_rate must be positive, got {sr}")
+
         self._data: np.ndarray = arr
-        self._sample_rate: float = float(sample_rate)
+        self._sample_rate: float = sr
         self._label: str | None = label
 
         if channel_layout is None:
@@ -119,7 +131,16 @@ class AudioBuffer:
             raise ValueError(f"mono requires 1-channel buffer, got {self.channels}")
         return self._data[0]
 
-    def __getitem__(self, key):
+    @overload
+    def __getitem__(self, key: int) -> np.ndarray: ...
+    @overload
+    def __getitem__(self, key: slice) -> AudioBuffer: ...
+    @overload
+    def __getitem__(self, key: tuple[int, slice]) -> np.ndarray: ...
+
+    def __getitem__(
+        self, key: int | slice | tuple[int, slice]
+    ) -> np.ndarray | AudioBuffer:
         if isinstance(key, int):
             return self.channel(key)
         if isinstance(key, slice):
@@ -139,7 +160,9 @@ class AudioBuffer:
     # Numpy interop
     # ------------------------------------------------------------------
 
-    def __array__(self, dtype=None, copy=None):
+    def __array__(
+        self, dtype: np.dtype | None = None, copy: bool | None = None
+    ) -> np.ndarray:
         if dtype is None:
             return self._data
         return self._data.astype(dtype)
@@ -251,7 +274,9 @@ class AudioBuffer:
     # Channel operations
     # ------------------------------------------------------------------
 
-    def to_mono(self, method: str = "mean") -> AudioBuffer:
+    def to_mono(
+        self, method: Literal["mean", "left", "right", "sum"] = "mean"
+    ) -> AudioBuffer:
         """Mix down to mono.
 
         *method*: ``'mean'`` (default), ``'left'``, ``'right'``, ``'sum'``.
@@ -346,7 +371,7 @@ class AudioBuffer:
             b = np.broadcast_to(b, a.shape)
         return a, b
 
-    def __add__(self, other):
+    def __add__(self, other: AudioBuffer | float | int) -> AudioBuffer:
         if isinstance(other, AudioBuffer):
             self._check_sr(other)
             a, b = self._broadcast(self._data, other._data)
@@ -361,10 +386,10 @@ class AudioBuffer:
             label=self._label,
         )
 
-    def __radd__(self, other):
+    def __radd__(self, other: AudioBuffer | float | int) -> AudioBuffer:
         return self.__add__(other)
 
-    def __sub__(self, other):
+    def __sub__(self, other: AudioBuffer | float | int) -> AudioBuffer:
         if isinstance(other, AudioBuffer):
             self._check_sr(other)
             a, b = self._broadcast(self._data, other._data)
@@ -379,14 +404,14 @@ class AudioBuffer:
             label=self._label,
         )
 
-    def __rsub__(self, other):
+    def __rsub__(self, other: float | int) -> AudioBuffer:
         return AudioBuffer(
             (np.float32(other) - self._data),
             sample_rate=self._sample_rate,
             label=self._label,
         )
 
-    def __mul__(self, other):
+    def __mul__(self, other: AudioBuffer | float | int) -> AudioBuffer:
         if isinstance(other, AudioBuffer):
             self._check_sr(other)
             a, b = self._broadcast(self._data, other._data)
@@ -401,10 +426,10 @@ class AudioBuffer:
             label=self._label,
         )
 
-    def __rmul__(self, other):
+    def __rmul__(self, other: AudioBuffer | float | int) -> AudioBuffer:
         return self.__mul__(other)
 
-    def __truediv__(self, other):
+    def __truediv__(self, other: AudioBuffer | float | int) -> AudioBuffer:
         if isinstance(other, AudioBuffer):
             self._check_sr(other)
             a, b = self._broadcast(self._data, other._data)
@@ -419,7 +444,7 @@ class AudioBuffer:
             label=self._label,
         )
 
-    def __neg__(self):
+    def __neg__(self) -> AudioBuffer:
         return AudioBuffer(
             -self._data,
             sample_rate=self._sample_rate,
@@ -437,7 +462,9 @@ class AudioBuffer:
             label=self._label,
         )
 
-    def pipe(self, fn, *args, **kwargs) -> AudioBuffer:
+    def pipe(
+        self, fn: Callable[..., AudioBuffer], *args: Any, **kwargs: Any
+    ) -> AudioBuffer:
         """Chain a DSP function: ``buf.pipe(dsp.lowpass, 5000)``.
 
         Calls ``fn(self, *args, **kwargs)`` and validates the return type.

@@ -268,6 +268,18 @@ class TestSpectralUtilities:
         with pytest.raises(ValueError, match="Rate must be > 0"):
             sp.time_stretch(spec, -1.0)
 
+    def test_time_stretch_extreme_slow(self, spec):
+        """Very slow rate (0.05) should produce a much longer spectrogram."""
+        result = sp.time_stretch(spec, 0.05)
+        assert result.data.shape[1] > spec.data.shape[1] * 10
+        assert np.all(np.isfinite(result.data))
+
+    def test_time_stretch_extreme_fast(self, spec):
+        """Very fast rate (10.0) should produce a much shorter spectrogram."""
+        result = sp.time_stretch(spec, 10.0)
+        assert result.data.shape[1] < spec.data.shape[1]
+        assert np.all(np.isfinite(result.data))
+
     # -- Phase lock --
 
     def test_phase_lock_preserves_magnitude(self, spec):

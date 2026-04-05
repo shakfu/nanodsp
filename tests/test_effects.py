@@ -1064,6 +1064,13 @@ class TestAgc:
         assert result.sample_rate == 44100.0
         assert result.label == "agc"
 
+    def test_near_silence_no_nan(self):
+        """AGC on near-silence should not produce NaN or Inf."""
+        data = np.full((1, 4096), 1e-10, dtype=np.float32)
+        buf = AudioBuffer(data, sample_rate=48000.0)
+        result = dynamics.agc(buf, target_level=0.5, max_gain_db=40.0)
+        assert np.all(np.isfinite(result.data))
+
 
 # ---------------------------------------------------------------------------
 # Shimmer Reverb
@@ -1377,3 +1384,100 @@ class TestAutoPan:
         energy_in = np.sum(buf.data**2)
         energy_out = np.sum(result.data**2)
         np.testing.assert_allclose(energy_out, energy_in, rtol=0.05)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: composed effect chains
+# ---------------------------------------------------------------------------
+
+
+class TestEffectChains:
+    """Verify that chaining multiple effects produces finite, correctly-shaped output."""
+
+    def test_exciter_compress_limit(self):
+        buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        result = buf.pipe(composed.exciter, amount=0.3)
+        result = result.pipe(dynamics.compress, ratio=4.0, threshold=-20.0)
+        result = result.pipe(dynamics.limit)
+        assert result.frames == buf.frames
+        assert result.channels == buf.channels
+        assert np.all(np.isfinite(result.data))
+        assert np.max(np.abs(result.data)) <= 1.0 + 1e-6
+
+    def test_vocal_chain_on_noise(self):
+        buf = AudioBuffer.noise(channels=1, frames=48000, sample_rate=48000.0, seed=42)
+        result = composed.vocal_chain(buf)
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
+
+    def test_master_chain_stereo(self):
+        buf = AudioBuffer.noise(channels=2, frames=48000, sample_rate=48000.0, seed=0)
+        result = composed.master(buf)
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
+
+    def test_lowpass_saturate_reverb(self):
+        buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        result = buf.pipe(fx_filters.lowpass, cutoff_hz=2000.0)
+        result = result.pipe(saturation.saturate, drive=0.7, mode="tape")
+        result = result.pipe(reverb.reverb, preset="room", mix=0.2)
+        assert result.channels == 2  # reverb outputs stereo
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
+
+    def test_stereo_delay_compress_limit(self):
+        buf = AudioBuffer.noise(channels=2, frames=16384, sample_rate=48000.0, seed=1)
+        result = composed.stereo_delay(buf, left_ms=100.0, right_ms=150.0, feedback=0.3)
+        result = result.pipe(dynamics.compress, ratio=6.0, threshold=-15.0)
+        result = result.pipe(dynamics.limit)
+        assert result.channels == 2
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
+
+    def test_de_esser_eq_compress(self):
+        buf = AudioBuffer.noise(channels=1, frames=24000, sample_rate=48000.0, seed=3)
+        result = composed.de_esser(buf, freq=6000.0)
+        result = result.pipe(fx_filters.highpass, cutoff_hz=80.0)
+        result = result.pipe(fx_filters.high_shelf_db, cutoff_hz=8000.0, db=3.0)
+        result = result.pipe(dynamics.compress, ratio=3.0, threshold=-18.0)
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
+
+    def test_multiband_compress_limit(self):
+        buf = AudioBuffer.noise(channels=1, frames=16384, sample_rate=48000.0, seed=5)
+        result = composed.multiband_compress(buf)
+        result = result.pipe(dynamics.limit)
+        assert result.frames == buf.frames
+        assert np.all(np.isfinite(result.data))
+
+    def test_shimmer_reverb_normalize(self):
+        buf = AudioBuffer.sine(220.0, frames=16384, sample_rate=48000.0)
+        result = composed.shimmer_reverb(buf, mix=0.4, decay=0.8)
+        assert result.channels == 2
+        assert np.all(np.isfinite(result.data))
+        # Normalize the output
+        from nanodsp.ops import normalize_peak
+
+        result = normalize_peak(result, target_db=-3.0)
+        peak_db = 20.0 * np.log10(np.max(np.abs(result.data)) + 1e-20)
+        assert abs(peak_db - (-3.0)) < 0.1
+
+    def test_lo_fi_then_reverb(self):
+        buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+        result = composed.lo_fi(buf)
+        result = result.pipe(reverb.reverb, preset="plate", mix=0.3)
+        assert result.channels == 2
+        assert np.all(np.isfinite(result.data))
+
+    def test_noise_gate_reverb_limit(self):
+        """Gate -> reverb -> limit chain should produce bounded output."""
+        data = np.zeros((1, 24000), dtype=np.float32)
+        data[0, 4000:8000] = np.sin(
+            2 * np.pi * 440.0 * np.arange(4000, dtype=np.float32) / 48000.0
+        ).astype(np.float32)
+        buf = AudioBuffer(data, sample_rate=48000.0)
+        result = dynamics.noise_gate(buf, threshold_db=-30.0)
+        result = result.pipe(reverb.reverb, preset="hall", mix=0.3)
+        result = result.pipe(dynamics.limit)
+        assert np.all(np.isfinite(result.data))
+        assert np.max(np.abs(result.data)) <= 1.0 + 1e-6

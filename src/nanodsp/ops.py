@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
@@ -19,7 +21,7 @@ def delay(
     buf: AudioBuffer,
     delay_samples: float,
     capacity: int | None = None,
-    interpolation: str = "linear",
+    interpolation: Literal["linear", "cubic"] = "linear",
 ) -> AudioBuffer:
     """Apply a fixed delay (in samples) per channel.
 
@@ -28,7 +30,7 @@ def delay(
     buf : AudioBuffer
         Input audio.
     delay_samples : float
-        Delay amount in samples (fractional for interpolated delay).
+        Delay amount in samples, >= 0 (fractional for interpolated delay).
     capacity : int or None
         Delay line capacity. If None, auto-sized from delay_samples.
     interpolation : str
@@ -54,7 +56,7 @@ def delay(
 def delay_varying(
     buf: AudioBuffer,
     delays,
-    interpolation: str = "linear",
+    interpolation: Literal["linear", "cubic"] = "linear",
 ) -> AudioBuffer:
     """Apply time-varying delay per channel.
 
@@ -500,7 +502,7 @@ def crossfade(buf_a: AudioBuffer, buf_b: AudioBuffer, x: float) -> AudioBuffer:
     buf_b : AudioBuffer
         Second audio buffer (returned when x=1).
     x : float
-        Crossfade position (0.0 to 1.0).
+        Crossfade position, 0.0--1.0 (0.0 = buf_a, 1.0 = buf_b).
 
     Returns
     -------
@@ -551,11 +553,12 @@ def lfo(
     low, high : float
         Output value range.
     rate : float
-        Base rate (cycles per sample).
+        Base rate in cycles per sample, > 0. Typical: 0.0001--0.01
+        (e.g. 0.001 = ~48 Hz at 48 kHz sample rate).
     sample_rate : float
-        Sample rate for the returned AudioBuffer metadata.
+        Sample rate for the returned AudioBuffer metadata, > 0.
     rate_variation, depth_variation : float
-        Randomization parameters (0 = deterministic).
+        Randomization parameters, >= 0 (0 = deterministic).
     seed : int or None
         Random seed for reproducibility.
 
@@ -586,7 +589,7 @@ def normalize_peak(buf: AudioBuffer, target_db: float = 0.0) -> AudioBuffer:
     buf : AudioBuffer
         Input audio.
     target_db : float
-        Target peak level in dBFS.
+        Target peak level in dBFS, <= 0. Typical: -6 to 0.
 
     Returns
     -------
@@ -618,9 +621,9 @@ def trim_silence(
     buf : AudioBuffer
         Input audio.
     threshold_db : float
-        Silence threshold in dB.
+        Silence threshold in dB, typically -80 to -20.
     pad_frames : int
-        Extra frames to keep around non-silent regions.
+        Extra frames to keep around non-silent regions, >= 0.
 
     Returns
     -------
@@ -647,7 +650,7 @@ def trim_silence(
 def fade_in(
     buf: AudioBuffer,
     duration_ms: float = 10.0,
-    curve: str = "linear",
+    curve: Literal["linear", "ease_in", "ease_out", "smoothstep"] = "linear",
 ) -> AudioBuffer:
     """Apply a fade-in over *duration_ms* milliseconds.
 
@@ -682,7 +685,7 @@ def fade_in(
 def fade_out(
     buf: AudioBuffer,
     duration_ms: float = 10.0,
-    curve: str = "linear",
+    curve: Literal["linear", "ease_in", "ease_out", "smoothstep"] = "linear",
 ) -> AudioBuffer:
     """Apply a fade-out over *duration_ms* milliseconds.
 
@@ -1047,9 +1050,9 @@ def lms_filter(
     ref : AudioBuffer
         Reference (noise) signal to be adaptively filtered and subtracted.
     filter_len : int
-        Number of filter taps.
+        Number of filter taps, >= 1. Typical: 16--256.
     step_size : float
-        Adaptation step size (mu).
+        Adaptation step size (mu), > 0 and < 1 for stability. Typical: 0.001--0.1.
     normalized : bool
         If True, use Normalized LMS (step_size normalized by input power).
 
@@ -1120,7 +1123,8 @@ def stereo_widen(buf: AudioBuffer, width: float = 1.5) -> AudioBuffer:
     buf : AudioBuffer
         Stereo input audio.
     width : float
-        Width factor: 0.0 = mono, 1.0 = unchanged, >1.0 = wider.
+        Width factor, >= 0. 0.0 = mono, 1.0 = unchanged, > 1.0 = wider.
+        Typical range: 0.0--3.0.
 
     Returns
     -------

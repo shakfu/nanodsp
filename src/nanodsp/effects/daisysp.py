@@ -26,11 +26,11 @@ def autowah(
     buf : AudioBuffer
         Input audio.
     wah : float
-        Wah amount (0.0 to 1.0).
+        Wah amount, 0.0--1.0.
     dry_wet : float
-        Dry/wet mix (0.0 = dry, 1.0 = wet).
+        Dry/wet mix, 0.0--1.0 (0.0 = dry, 1.0 = wet).
     level : float
-        Output level (0.0 to 1.0).
+        Output level, 0.0--1.0.
 
     Returns
     -------
@@ -66,13 +66,13 @@ def chorus(
     buf : AudioBuffer
         Input audio.
     lfo_freq : float
-        LFO rate in Hz.
+        LFO rate in Hz, > 0. Typical: 0.1--5.0.
     lfo_depth : float
-        LFO modulation depth (0.0 to 1.0).
+        LFO modulation depth, 0.0--1.0.
     delay_ms : float
-        Base delay time in milliseconds.
+        Base delay time in milliseconds, > 0. Typical: 1--30.
     feedback : float
-        Feedback amount (0.0 to 1.0).
+        Feedback amount, 0.0--1.0.
 
     Returns
     -------
@@ -120,11 +120,11 @@ def decimator(
     buf : AudioBuffer
         Input audio.
     downsample_factor : float
-        Downsampling amount (0.0 to 1.0).
+        Downsampling amount, 0.0--1.0.
     bitcrush_factor : float
-        Bit reduction amount (0.0 to 1.0).
+        Bit reduction amount, 0.0--1.0.
     bits_to_crush : int
-        Number of bits to quantize to.
+        Number of bits to quantize to, 1--32.
     smooth : bool
         If True, apply smoothing to crushed output.
 
@@ -160,13 +160,13 @@ def flanger(
     buf : AudioBuffer
         Input audio.
     lfo_freq : float
-        LFO rate in Hz.
+        LFO rate in Hz, > 0. Typical: 0.05--2.0.
     lfo_depth : float
-        LFO modulation depth (0.0 to 1.0).
+        LFO modulation depth, 0.0--1.0.
     feedback : float
-        Feedback amount (0.0 to 1.0).
+        Feedback amount, 0.0--1.0.
     delay_ms : float
-        Base delay time in milliseconds.
+        Base delay time in milliseconds, > 0. Typical: 0.5--10.
 
     Returns
     -------
@@ -194,7 +194,7 @@ def overdrive(buf: AudioBuffer, drive: float = 0.5) -> AudioBuffer:
     buf : AudioBuffer
         Input audio.
     drive : float
-        Drive amount (0.0 to 1.0).
+        Drive amount, 0.0--1.0.
 
     Returns
     -------
@@ -226,15 +226,15 @@ def phaser(
     buf : AudioBuffer
         Input audio.
     lfo_freq : float
-        LFO rate in Hz.
+        LFO rate in Hz, > 0. Typical: 0.1--2.0.
     lfo_depth : float
-        LFO modulation depth (0.0 to 1.0).
+        LFO modulation depth, 0.0--1.0.
     freq : float
-        Base allpass frequency in Hz.
+        Base allpass frequency in Hz, > 0 and < Nyquist.
     feedback : float
-        Feedback amount (0.0 to 1.0).
+        Feedback amount, 0.0--1.0.
     poles : int
-        Number of allpass stages.
+        Number of allpass stages, >= 1. Typical: 2--8.
 
     Returns
     -------
@@ -272,7 +272,7 @@ def pitch_shift(
     del_size : int
         Internal delay buffer size.
     fun : float
-        Fun parameter (spectral smearing, 0.0 to 1.0).
+        Fun parameter (spectral smearing), 0.0--1.0.
 
     Returns
     -------
@@ -299,7 +299,7 @@ def sample_rate_reduce(buf: AudioBuffer, freq: float = 0.5) -> AudioBuffer:
     buf : AudioBuffer
         Input audio.
     freq : float
-        Normalized frequency 0-1 controlling the reduction amount.
+        Normalized frequency, 0.0--1.0. Lower = more reduction.
 
     Returns
     -------
@@ -329,11 +329,11 @@ def tremolo(
     buf : AudioBuffer
         Input audio.
     freq : float
-        Tremolo rate in Hz.
+        Tremolo rate in Hz, > 0. Typical: 1--20.
     depth : float
-        Modulation depth (0.0 to 1.0).
+        Modulation depth, 0.0--1.0.
     waveform : int
-        LFO waveform index.
+        LFO waveform index, 0--7.
 
     Returns
     -------
@@ -364,9 +364,9 @@ def wavefold(
     buf : AudioBuffer
         Input audio.
     gain : float
-        Input gain before folding.
+        Input gain before folding, > 0. Higher values create more folds.
     offset : float
-        DC offset applied before folding.
+        DC offset applied before folding. Typical: -1.0 to 1.0.
 
     Returns
     -------
@@ -396,9 +396,9 @@ def bitcrush(
     buf : AudioBuffer
         Input audio.
     bit_depth : int
-        Number of bits for quantization.
+        Number of bits for quantization, 1--32. Lower = more distortion.
     crush_rate : float or None
-        Sample-and-hold rate. Defaults to sample_rate / 4 if None.
+        Sample-and-hold rate in Hz, > 0. Defaults to sample_rate / 4 if None.
 
     Returns
     -------
@@ -425,7 +425,7 @@ def fold(buf: AudioBuffer, increment: float = 1.0) -> AudioBuffer:
     buf : AudioBuffer
         Input audio.
     increment : float
-        Fold increment amount.
+        Fold increment amount, > 0.
 
     Returns
     -------
@@ -457,9 +457,10 @@ def reverb_sc(
     buf : AudioBuffer
         Input audio (mono or stereo).
     feedback : float
-        Reverb feedback / decay (0.0 to 1.0).
+        Reverb feedback / decay, 0.0--<1.0 (values >= 1.0 are unstable).
     lp_freq : float
-        Lowpass filter frequency in Hz for damping.
+        Lowpass filter frequency in Hz for damping, > 0 and < Nyquist.
+        Typical: 1000--20000.
 
     Returns
     -------

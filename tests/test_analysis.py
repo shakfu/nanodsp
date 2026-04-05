@@ -91,6 +91,17 @@ class TestLoudnessLufs:
         assert abs(lufs_51 - lufs_stereo) < 0.5
 
 
+class TestLoudnessLufsEdgeCases:
+    def test_very_quiet_signal(self):
+        """Near-silence should return -inf or a very negative LUFS."""
+        sr = 48000.0
+        frames = int(sr * 3)
+        data = np.full((1, frames), 1e-8, dtype=np.float32)
+        buf = AudioBuffer(data, sample_rate=sr)
+        lufs = analysis.loudness_lufs(buf)
+        assert np.isinf(lufs) or lufs < -60.0
+
+
 class TestNormalizeLufs:
     def test_hits_target(self):
         sr = 48000.0
@@ -397,6 +408,15 @@ class TestPitchDetect:
         buf = AudioBuffer.noise(1, 4096, seed=0)
         with pytest.raises(ValueError, match="Unknown"):
             analysis.pitch_detect(buf, method="autocorrelation")
+
+    def test_fmin_above_fmax_returns_unvoiced(self):
+        """When fmin >= fmax, tau_min >= tau_max so no valid pitch is found."""
+        buf = AudioBuffer.sine(440.0, frames=16384, sample_rate=48000.0)
+        freqs, confs = analysis.pitch_detect(
+            buf, window_size=4096, fmin=2000.0, fmax=100.0
+        )
+        assert np.all(freqs == 0.0)
+        assert np.all(confs == 0.0)
 
 
 class TestOnsetDetect:

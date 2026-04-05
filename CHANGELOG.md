@@ -7,13 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6]
+
+### Added
+
+- **Integration tests** -- 10 new composed effect chain tests (`TestEffectChains`) verifying multi-stage pipelines produce finite, correctly-shaped output: exciter->compress->limit, vocal_chain, master chain, lowpass->saturate->reverb, stereo_delay->compress->limit, de_esser->EQ->compress, multiband_compress->limit, shimmer_reverb->normalize, lo_fi->reverb, noise_gate->reverb->limit
+- **Edge-case tests** -- 7 new tests for boundary conditions: `sample_rate=0` and negative sample_rate rejection, `pitch_detect(fmin >= fmax)` returns unvoiced, extreme `time_stretch` rates (0.05 and 10.0), near-silence LUFS metering, near-silence AGC stability
+- **Algorithm citations** -- added References sections with paper citations to 4 algorithm implementations:
+  - `loudness_lufs`: ITU-R BS.1770-4 (2015)
+  - `pitch_detect`: de Cheveigne & Kawahara, "YIN," JASA 2002
+  - `gcc_phat`: Knapp & Carter, IEEE 1976
+  - `time_stretch`: Flanagan & Golden (1966), Laroche & Dolson (1999)
+
+### Changed
+
+- **Sample rate validation** -- `AudioBuffer.__init__` now raises `ValueError` if `sample_rate <= 0`, preventing downstream `ZeroDivisionError` in `.duration` and other computations
+- **`Literal` type unions for string mode parameters** -- 14 function signatures now use `Literal[...]` instead of bare `str` for IDE autocompletion and static checking:
+  - `buffer.py`: `to_mono(method=)`
+  - `ops.py`: `delay(interpolation=)`, `delay_varying(interpolation=)`, `fade_in(curve=)`, `fade_out(curve=)`
+  - `effects/saturation.py`: `saturate(mode=)`
+  - `effects/reverb.py`: `reverb(preset=)`, `stk_reverb(algorithm=)`
+  - `effects/filters.py`: `ladder_filter(mode=)`, `va_oberheim(mode=)`
+  - `effects/composed.py`: `shimmer_reverb(preset=)`, `gated_reverb(preset=)`
+  - `spectral.py`: `stft(window=)`, `istft(window=)` (via `WindowType` alias)
+- **Type annotations in `buffer.py`** -- full parameter and return type annotations for all operator overloads (`__add__`, `__sub__`, `__mul__`, `__truediv__`, `__neg__`, `__radd__`, `__rsub__`, `__rmul__`), `__getitem__` (with `@overload`), `__array__`, and `pipe()`. Added `ArrayLike` type for `__init__` data parameter.
+- **Parameter range documentation** -- added valid ranges and typical values to docstrings across 10 modules (~60 parameters): dynamics (ratio, threshold, attack, release, makeup, etc.), reverb (mix, decay, damping, feedback, t60, etc.), saturation (drive), daisysp effects (lfo_freq, lfo_depth, feedback, depth, etc.), ops (delay_samples, crossfade x, lfo rate, normalize target_db, trim threshold, lms step_size, stereo_widen width), analysis (target_lufs, percentile, fmin/fmax, threshold), spectral (window_size, hop_size, threshold_db, noise_floor_db, reduction_db, smoothing), filters (cutoff_hz, q for all VA filters), synthesis (freq, amp, pw, ratio, index, phase_shift), composed (exciter amount, de_esser freq/threshold/ratio/bandwidth, parallel_compress mix/ratio/threshold/attack/release)
+- **Named epsilon constants in `analysis.py`** -- replaced 3 bare `eps = 1e-20` / `eps = 1e-10` values with module-level `_LOG_EPS` and `_DIV_EPS` constants with a comment explaining why they differ
+- **Inline comment for EQ match gain ceiling** -- `spectral.py` `eq_match()` now documents the `100.0` clipping ceiling as "+40 dB cap to prevent EQ runaway on near-silent bins"
+- **Mono-summing deduplication in `reverb.py`** -- extracted `_to_mono()` helper, replacing 3 identical mono-downmix patterns in `reverb()`, `stk_reverb()`, and `stk_chorus()`
+- **STK version clarification** -- `VERSIONS.md` now identifies the vendored STK as a `~5.0.0-dev` snapshot, explains the version string inconsistency across source files, and notes `configure.ac` (5.0.0) as authoritative
+- **fxdsp VERSIONS.md entry** -- updated stale "unlicensed" description to reflect the MIT LICENSE file present in `thirdparty/fxdsp/`
+
 ## [0.1.5]
 
 ### Added
 
 - **Ping-pong delay** (`nanodsp._core.fxdsp.PingPongDelay`, `nanodsp.effects.composed.ping_pong_delay`) -- stereo ping-pong delay with crossed feedback and linear interpolation. Based on FX/KHPingPongDelay.hpp, rewritten as clean header.
   - Configurable delay time, feedback (-0.99 to 0.99), and dry/wet mix
-  - Stereo processing: [2, N] input/output with crossed feedback paths
+  - Stereo processing: `[2, N]` input/output with crossed feedback paths
   - Accepts mono (duplicated to stereo) or stereo input
 
 - **Frequency shifter** (`nanodsp._core.fxdsp.FreqShifter`, `nanodsp.effects.composed.freq_shift`) -- Bode-style frequency shifter using allpass Hilbert transform approximation. Based on FX/BodeShifter.hpp, rewritten from scratch (original had bugs).

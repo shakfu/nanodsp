@@ -4,7 +4,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 
 ## Features
 
-- **79+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing
+- **190+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing, granular synthesis
 - **11 C++ backends** -- signalsmith, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP
 - **Zero-copy where possible** -- numpy arrays pass directly to C++ with GIL release for true multi-threaded parallelism
 - **CLI included** -- process, analyze, synthesize, convert, and benchmark audio from the command line
@@ -19,7 +19,7 @@ from nanodsp import analysis
 
 buf = (
     AudioBuffer.from_file("input.wav")
-    .pipe(filters.highpass, freq=80.0)
+    .pipe(filters.highpass, cutoff_hz=80.0)
     .pipe(dynamics.compress, threshold=-18.0, ratio=4.0)
     .pipe(analysis.normalize_lufs, target_lufs=-14.0)
 )
