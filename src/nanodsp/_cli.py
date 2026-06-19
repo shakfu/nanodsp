@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import inspect
+import json
+import os
 import types
+from pathlib import Path
 from typing import Any
 
 from nanodsp import ops, spectral, analysis, synthesis
@@ -432,6 +435,57 @@ PRESETS: dict[str, dict[str, Any]] = {
 }
 
 
+def _user_presets_path() -> Path:
+    """Path to the user preset file.
+
+    Uses ``$NANODSP_PRESETS`` if set, else ``~/.nanodsp/presets.json``.
+    """
+    env = os.environ.get("NANODSP_PRESETS")
+    if env:
+        return Path(env).expanduser()
+    return Path.home() / ".nanodsp" / "presets.json"
+
+
+def load_user_presets() -> dict[str, dict[str, Any]]:
+    """Load user-defined presets from JSON, or {} if no file is present.
+
+    The JSON top level must be an object mapping preset names to preset
+    definitions in the same shape as the built-in :data:`PRESETS` entries --
+    either ``{"fn": "module.func", "defaults": {...}}`` or
+    ``{"chain": [["module", "func", {...}], ...]}`` (plus optional
+    ``description`` and ``category``).  Chain steps are lists rather than tuples
+    because JSON has no tuple type; :func:`apply_preset` accepts both.
+
+    Raises
+    ------
+    ValueError
+        If the file is malformed JSON or its top level is not an object.
+    """
+    path = _user_presets_path()
+    if not path.is_file():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        raise ValueError(f"Failed to load user presets from {path}: {e}") from e
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"User presets file {path} must be a JSON object mapping names to presets"
+        )
+    return data
+
+
+def get_presets() -> dict[str, dict[str, Any]]:
+    """Return built-in presets merged with user presets.
+
+    User presets override built-ins on a name collision.
+    """
+    merged: dict[str, dict[str, Any]] = dict(PRESETS)
+    merged.update(load_user_presets())
+    return merged
+
+
 def _resolve_preset_fn(fn_str: str) -> Any:
     """Resolve a 'module.function' string to a callable."""
     module_name, func_name = fn_str.split(".", 1)
@@ -472,13 +526,14 @@ def apply_preset(name: str, buf: Any, overrides: dict[str, Any] | None = None) -
     -------
     AudioBuffer
     """
-    if name not in PRESETS:
+    presets = get_presets()
+    if name not in presets:
         raise KeyError(f"Unknown preset: {name!r}")
-    preset = PRESETS[name]
+    preset = presets[name]
     overrides = overrides or {}
 
     if "chain" in preset:
-        # Chain of (module_name, func_name, params) steps
+        # Chain of (module_name, func_name, params) steps (tuples or JSON lists)
         result = buf
         for module_name, func_name, params in preset["chain"]:
             fn = _resolve_preset_fn(f"{module_name}.{func_name}")
@@ -486,15 +541,18 @@ def apply_preset(name: str, buf: Any, overrides: dict[str, Any] | None = None) -
             result = fn(result, **merged)
         return result
 
-    fn = _resolve_preset_fn(preset["fn"])
-    params = {**preset.get("defaults", {}), **overrides}
-    return fn(buf, **params)
+    if "fn" in preset:
+        fn = _resolve_preset_fn(preset["fn"])
+        params = {**preset.get("defaults", {}), **overrides}
+        return fn(buf, **params)
+
+    raise ValueError(f"Preset {name!r} must define 'fn' or 'chain'")
 
 
 def get_preset_categories() -> dict[str, list[str]]:
-    """Return presets grouped by category."""
+    """Return presets (built-in + user) grouped by category."""
     cats: dict[str, list[str]] = {}
-    for name, info in PRESETS.items():
+    for name, info in get_presets().items():
         cat = info.get("category", "other")
         cats.setdefault(cat, []).append(name)
     return cats

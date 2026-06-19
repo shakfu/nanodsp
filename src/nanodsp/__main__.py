@@ -1,16 +1,33 @@
 """nanodsp CLI -- process, analyze, synthesize, and convert audio files."""
+# PYTHON_ARGCOMPLETE_OK
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+import wave
 from pathlib import Path
 
 import numpy as np
 
 from nanodsp import __version__
 from nanodsp.buffer import AudioBuffer
+
+
+# Expected, user-facing error categories. Catching these (rather than a bare
+# ``Exception``) reports a clean message and exits, while letting genuinely
+# unexpected errors -- bugs such as AttributeError/ImportError/NameError --
+# propagate with a full traceback instead of being masked.
+_IO_ERRORS = (OSError, ValueError, EOFError, RuntimeError, wave.Error)
+_DSP_ERRORS = (
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    RuntimeError,
+    ZeroDivisionError,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +72,7 @@ def _read_input(path: str, args: argparse.Namespace | None = None) -> AudioBuffe
         _log_verbose(args, f"  Reading {path}")
     try:
         buf = read(path)
-    except Exception as e:
+    except _IO_ERRORS as e:
         print(f"Error reading {path}: {e}", file=sys.stderr)
         sys.exit(1)
     if args:
@@ -79,8 +96,19 @@ def _write_output(
         _log_verbose(args, f"  Writing {path} ({bit_depth}-bit)")
     try:
         write(path, buf, bit_depth=bit_depth)
-    except Exception as e:
+    except _IO_ERRORS as e:
         print(f"Error writing {path}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _load_presets() -> dict:
+    """Return built-in + user presets, exiting cleanly on a malformed user file."""
+    from nanodsp._cli import get_presets
+
+    try:
+        return get_presets()
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -135,10 +163,10 @@ def _build_chain(args: argparse.Namespace) -> list[dict]:
         get_function,
         parse_fx_token,
         coerce_params,
-        PRESETS,
     )
 
     steps: list[dict] = []
+    presets = _load_presets() if args.preset else {}
 
     if args.fx:
         for token in args.fx:
@@ -162,14 +190,14 @@ def _build_chain(args: argparse.Namespace) -> list[dict]:
 
     if args.preset:
         for preset_name in args.preset:
-            if preset_name not in PRESETS:
+            if preset_name not in presets:
                 print(f"Unknown preset: {preset_name!r}", file=sys.stderr)
                 sys.exit(1)
             steps.append(
                 {
                     "type": "preset",
                     "name": preset_name,
-                    "description": PRESETS[preset_name].get("description", ""),
+                    "description": presets[preset_name].get("description", ""),
                 }
             )
 
@@ -204,14 +232,14 @@ def _apply_chain(
             _log_verbose(args, f"  Applying {step['name']}({step['params']})")
             try:
                 buf = step["fn"](buf, **step["params"])
-            except Exception as e:
+            except _DSP_ERRORS as e:
                 print(f"Error applying {step['name']}: {e}", file=sys.stderr)
                 sys.exit(1)
         else:
             _log_verbose(args, f"  Applying preset {step['name']!r}")
             try:
                 buf = apply_preset(step["name"], buf)
-            except Exception as e:
+            except _DSP_ERRORS as e:
                 print(
                     f"Error applying preset {step['name']!r}: {e}",
                     file=sys.stderr,
@@ -409,14 +437,14 @@ def _analyze_info(buf: AudioBuffer, args: argparse.Namespace) -> None:
     try:
         cent = _analysis.spectral_centroid(buf)
         info["spectral_centroid_mean_hz"] = round(float(np.mean(cent)), 1)
-    except Exception:
+    except _DSP_ERRORS:
         pass
 
     # Spectral flatness mean
     try:
         flat = _analysis.spectral_flatness_curve(buf)
         info["spectral_flatness_mean"] = round(float(np.mean(flat)), 4)
-    except Exception:
+    except _DSP_ERRORS:
         pass
 
     if args.json:
@@ -569,8 +597,9 @@ def cmd_convert(args: argparse.Namespace) -> None:
 
 def cmd_preset(args: argparse.Namespace) -> None:
     """Manage and apply presets."""
-    from nanodsp._cli import PRESETS, get_preset_categories, apply_preset
+    from nanodsp._cli import get_preset_categories, apply_preset
 
+    presets = _load_presets()
     subcmd = args.preset_action
 
     if subcmd == "list":
@@ -585,22 +614,22 @@ def cmd_preset(args: argparse.Namespace) -> None:
                 return
             print(f"\n  {filter_cat}:")
             for name in sorted(names):
-                desc = PRESETS[name].get("description", "")
+                desc = presets[name].get("description", "")
                 print(f"    {name:20s} {desc}")
         else:
             for cat in sorted(cats):
                 print(f"\n  {cat}:")
                 for name in sorted(cats[cat]):
-                    desc = PRESETS[name].get("description", "")
+                    desc = presets[name].get("description", "")
                     print(f"    {name:20s} {desc}")
         print()
 
     elif subcmd == "info":
         name = args.name
-        if name not in PRESETS:
+        if name not in presets:
             print(f"Unknown preset: {name!r}", file=sys.stderr)
             sys.exit(1)
-        preset = PRESETS[name]
+        preset = presets[name]
         print(f"\n  {name}")
         print(f"  Category: {preset.get('category', 'other')}")
         print(f"  Description: {preset.get('description', '')}")
@@ -616,7 +645,7 @@ def cmd_preset(args: argparse.Namespace) -> None:
 
     elif subcmd == "apply":
         name = args.name
-        if name not in PRESETS:
+        if name not in presets:
             print(f"Unknown preset: {name!r}", file=sys.stderr)
             sys.exit(1)
         buf = _read_input(args.input, args)
@@ -639,7 +668,7 @@ def cmd_preset(args: argparse.Namespace) -> None:
                 overrides[k] = v_coerced
         try:
             buf = apply_preset(name, buf, overrides)
-        except Exception as e:
+        except _DSP_ERRORS as e:
             print(f"Error applying preset {name!r}: {e}", file=sys.stderr)
             sys.exit(1)
         bit_depth = args.bit_depth or 16
@@ -666,7 +695,7 @@ def cmd_pipe(args: argparse.Namespace) -> None:
 
     try:
         raw_in = sys.stdin.buffer.read()
-    except Exception as e:
+    except OSError as e:
         print(f"Error reading stdin: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -676,7 +705,7 @@ def cmd_pipe(args: argparse.Namespace) -> None:
 
     try:
         buf = read_wav_bytes(raw_in)
-    except Exception as e:
+    except _IO_ERRORS as e:
         print(f"Error parsing WAV from stdin: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -687,7 +716,7 @@ def cmd_pipe(args: argparse.Namespace) -> None:
     bit_depth = args.bit_depth or 16
     try:
         raw_out = write_wav_bytes(buf, bit_depth=bit_depth)
-    except Exception as e:
+    except _IO_ERRORS as e:
         print(f"Error encoding WAV output: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -824,6 +853,58 @@ def cmd_list(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Tab completion (argcomplete)
+#
+# Completer callables are attached to argparse actions as a ``.completer``
+# attribute. This is harmless when argcomplete is not installed (the attribute
+# is simply ignored); when it is, ``main`` enables it. To activate shell
+# completion, install argcomplete and run, e.g.:
+#     eval "$(register-python-argcomplete nanodsp)"
+# ---------------------------------------------------------------------------
+
+
+def _preset_name_completer(prefix: str, **kwargs) -> list[str]:
+    try:
+        from nanodsp._cli import get_presets
+
+        names = get_presets().keys()
+    except (ValueError, ImportError):
+        return []
+    return [n for n in names if n.startswith(prefix)]
+
+
+def _preset_category_completer(prefix: str, **kwargs) -> list[str]:
+    try:
+        from nanodsp._cli import get_preset_categories
+
+        cats = get_preset_categories().keys()
+    except (ValueError, ImportError):
+        return []
+    return [c for c in cats if c.startswith(prefix)]
+
+
+def _function_completer(prefix: str, **kwargs) -> list[str]:
+    from nanodsp._cli import get_registry
+
+    return [n for n in get_registry() if n.startswith(prefix)]
+
+
+def _category_completer(prefix: str, **kwargs) -> list[str]:
+    from nanodsp._cli import get_categories
+
+    return [c for c in get_categories() if c.startswith(prefix)]
+
+
+def _set_completer(action: argparse.Action, completer) -> None:
+    """Attach an argcomplete completer to an argparse action.
+
+    argcomplete reads a ``.completer`` attribute off the action; argparse has no
+    declared slot for it, hence the localized type-ignore.
+    """
+    action.completer = completer  # type: ignore[attr-defined]
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argparse parser."""
     parser = argparse.ArgumentParser(
@@ -875,19 +956,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         help="Output directory for batch mode (files keep original names)",
     )
-    p_proc.add_argument(
-        "-f",
-        "--fx",
-        action="append",
-        metavar="NAME:K=V,...",
-        help="Effect to apply (repeatable). Format: name:param=val,param=val",
+    _set_completer(
+        p_proc.add_argument(
+            "-f",
+            "--fx",
+            action="append",
+            metavar="NAME:K=V,...",
+            help="Effect to apply (repeatable). Format: name:param=val,param=val",
+        ),
+        _function_completer,
     )
-    p_proc.add_argument(
-        "-p",
-        "--preset",
-        action="append",
-        metavar="NAME",
-        help="Apply a named preset (repeatable)",
+    _set_completer(
+        p_proc.add_argument(
+            "-p",
+            "--preset",
+            action="append",
+            metavar="NAME",
+            help="Apply a named preset (repeatable)",
+        ),
+        _preset_name_completer,
     )
     p_proc.add_argument(
         "-b",
@@ -963,13 +1050,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_preset_sub = p_preset.add_subparsers(dest="preset_action")
 
     p_plist = p_preset_sub.add_parser("list", help="List presets")
-    p_plist.add_argument("category", nargs="?", help="Filter by category")
+    _set_completer(
+        p_plist.add_argument("category", nargs="?", help="Filter by category"),
+        _preset_category_completer,
+    )
 
     p_pinfo = p_preset_sub.add_parser("info", help="Show preset details")
-    p_pinfo.add_argument("name", help="Preset name")
+    _set_completer(
+        p_pinfo.add_argument("name", help="Preset name"), _preset_name_completer
+    )
 
     p_papply = p_preset_sub.add_parser("apply", help="Apply a preset")
-    p_papply.add_argument("name", help="Preset name")
+    _set_completer(
+        p_papply.add_argument("name", help="Preset name"), _preset_name_completer
+    )
     p_papply.add_argument("input", help="Input audio file")
     p_papply.add_argument("output", help="Output audio file")
     p_papply.add_argument(
@@ -1058,7 +1152,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- list ---
     p_list = sub.add_parser("list", help="List available functions")
-    p_list.add_argument("category", nargs="?", help="Filter by category")
+    _set_completer(
+        p_list.add_argument("category", nargs="?", help="Filter by category"),
+        _category_completer,
+    )
 
     return parser
 
@@ -1071,6 +1168,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     parser = build_parser()
+
+    # Enable shell tab completion when argcomplete is installed (optional).
+    try:
+        import argcomplete
+
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
+
     args = parser.parse_args(argv)
 
     if args.command is None:

@@ -125,6 +125,36 @@ nanodsp list effects
 | lofi | `telephone`, `lo_fi`, `vinyl`, `8bit` |
 | cleanup | `dc_remove`, `de_noise`, `normalize`, `normalize_lufs` |
 
+#### User-defined presets
+
+Custom presets are loaded from `~/.nanodsp/presets.json` (or the path in `$NANODSP_PRESETS`) and merged with the built-ins; a user preset with the same name as a built-in overrides it. They appear in `preset list` and work everywhere the built-ins do (`preset apply`, `process -p`). Each entry mirrors a built-in: either a single function or a chain.
+
+```json
+{
+  "my_boost":     { "category": "custom", "description": "low-shelf boost",
+                    "fn": "effects.low_shelf_db", "defaults": {"cutoff_hz": 150.0, "db": 4.0} },
+  "my_telephone": { "category": "custom", "description": "narrow band",
+                    "chain": [["effects", "highpass", {"cutoff_hz": 400.0}],
+                              ["effects", "lowpass",  {"cutoff_hz": 3000.0}]] }
+}
+```
+
+```bash
+nanodsp preset apply my_boost input.wav output.wav
+nanodsp process input.wav -o output.wav -p my_telephone
+```
+
+#### Tab completion
+
+The CLI supports shell tab completion (subcommands, options, preset names, categories, and function names) via [argcomplete](https://github.com/kislyuk/argcomplete). Install it and enable completion for your shell:
+
+```bash
+pip install argcomplete
+eval "$(register-python-argcomplete nanodsp)"   # add to ~/.bashrc or ~/.zshrc
+```
+
+argcomplete is an optional dependency: the CLI works normally without it.
+
 ## Quick start
 
 `AudioBuffer` is the one name exported at the top level (`from nanodsp import AudioBuffer`); it is the central data type that carries audio through every operation. All DSP functions are imported from their specific submodule -- e.g. filters from `nanodsp.effects.filters`, dynamics from `nanodsp.effects.dynamics`, metering from `nanodsp.analysis`. Chain them with `AudioBuffer.pipe`, which feeds the buffer in as the first argument:
@@ -611,6 +641,39 @@ out = chain.process(buf)
 
 # Process with overlap-add (fn is the second argument)
 out = process_blocks(buf, my_spectral_fn, block_size=2048, hop_size=512)
+```
+
+#### Stateful streaming filters
+
+Unlike `nanodsp.effects.filters`, which rebuild their filter on every call and so cannot be streamed without discontinuities at block boundaries, `StatefulFilter` keeps one persistent filter per channel. Feeding a signal through it in arbitrary chunks gives exactly the same result as processing the whole signal at once -- suitable for real-time and long-file streaming, and composable in a `ProcessorChain`.
+
+```python
+from nanodsp.stream import (
+    StatefulFilter, ProcessorChain,
+    stateful_lowpass, stateful_highpass, stateful_bandpass, stateful_notch,
+    stateful_moog_ladder,
+)
+
+# Construct once, then feed successive blocks -- state carries across calls.
+lp = stateful_lowpass(1000.0, channels=2, sample_rate=48000.0)
+for block in blocks:                 # any block sizes, even 1 sample
+    out_block = lp.process(block)     # continuous; no boundary clicks
+
+lp.reset()                            # clear filter state
+
+# Cascade stateful filters; the chain streams continuously too.
+chain = ProcessorChain(
+    stateful_highpass(200.0, sample_rate=48000.0),
+    stateful_lowpass(4000.0, sample_rate=48000.0),
+)
+out = chain.process(block)
+
+# Resonant DaisySP Moog ladder (demonstrates cross-backend support)
+ml = stateful_moog_ladder(1000.0, resonance=0.3, sample_rate=48000.0)
+
+# Wrap any stateful per-channel DSP object via a factory (process(1d) -> 1d)
+from nanodsp._core import filters
+sf = StatefulFilter(lambda: _configured_biquad(), channels=1, sample_rate=48000.0)
 ```
 
 ### `nanodsp._core.grainflow` -- Granular synthesis (low-level)

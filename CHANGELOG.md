@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User-defined CLI presets** -- the CLI now loads custom presets from `~/.nanodsp/presets.json` (or the path in `$NANODSP_PRESETS`) and merges them with the built-ins; a user preset overrides a built-in of the same name. They work in `preset list`, `preset info`, `preset apply`, and `process -p`. Each entry uses the same JSON shape as a built-in (a single `fn` + `defaults`, or a `chain` of `[module, function, params]` steps). Malformed preset files produce a clean error.
+
+- **CLI tab completion** -- optional shell completion via `argcomplete` (`eval "$(register-python-argcomplete nanodsp)"`), covering subcommands, options, preset names, preset categories, and function names. `argcomplete` is an optional dependency; the CLI works normally without it.
+
+- **Stateful streaming filters** (`nanodsp.stream.StatefulFilter` plus `stateful_lowpass`, `stateful_highpass`, `stateful_bandpass`, `stateful_notch`, and `stateful_moog_ladder`) -- filters that retain per-channel state across `process()` calls by holding one persistent C++ DSP object per channel. Feeding a signal in arbitrary blocks produces bit-exactly the same result as processing it whole, so filters can now be streamed in real time or over long files without discontinuities at block boundaries (which the stateless `nanodsp.effects.filters` functions cannot do, since they rebuild their filter every call). `StatefulFilter` subclasses `BlockProcessor`, composes inside `ProcessorChain`, supports `reset()`, and accepts a custom factory to wrap any stateful per-channel DSP object.
+
 - **Top-level `AudioBuffer` export** -- `AudioBuffer` is now re-exported from the package root, so `from nanodsp import AudioBuffer` (and `nanodsp.AudioBuffer`) work directly. Importing the package stays cheap: `buffer.py` depends only on numpy, so `import nanodsp` does not load the compiled `_core` extension. All other functionality continues to be imported from its specific submodule (e.g. `from nanodsp.effects.filters import lowpass`).
 
 ### Changed
@@ -18,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Centralized mono/multi-channel return-shape policy** -- added a `_squeeze_mono` helper and applied it across the six `nanodsp.analysis` spectral features and `pitch_detect`, replacing the copy-pasted squeeze-if-mono idiom. Behavior is unchanged: a mono input drops the leading channel axis, multi-channel input keeps it.
 
 - **Factored synthesis/ops boilerplate** -- introduced `_synth_triggered` (drives the five DaisySP drums plus the modal and string voices), `_apply_envelope` (backs `box_filter`, `box_stack_filter`, `peak_hold`, `peak_decay`), and `_process_mix_frames` (backs `hadamard` and `householder`), removing the repeated init/configure/trigger/render and per-frame mixing loops. No behavior change.
+
+- **Numerical-correctness test tier** -- added `tests/test_numerical.py` (38 tests) that verify signal behavior rather than just shape/dtype: a `parametrize`-driven filter harness measuring passband/stopband gain via single-bin DFT across the biquad, state-variable, ladder, tone, and IIR designs; oscillator-fundamental and YIN pitch-accuracy checks; and alias-suppression checks comparing band-limited oscillators (PolyBLEP, BLIT, DPW) against a naive sawtooth.
+- **Coverage gate** -- coverage reporting now fails below 90% (`[tool.coverage.report] fail_under` in `pyproject.toml`), enforced by `make coverage` and the CI `--cov` run. Current coverage is ~94%.
+
+- **Narrowed CLI exception handling** -- replaced the ten broad `except Exception` blocks in the CLI with targeted `_IO_ERRORS` (file/stream I/O) and `_DSP_ERRORS` (effect/preset application) tuples, so expected failures still exit cleanly with a message while genuine bugs surface with a full traceback instead of being masked.
 
 ### Fixed
 

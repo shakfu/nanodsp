@@ -6,6 +6,8 @@ processing audio in fixed-size chunks.
 
 from __future__ import annotations
 
+from typing import Any, Callable
+
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
@@ -411,3 +413,206 @@ def process_blocks(
         channel_layout=buf.channel_layout,
         label=buf.label,
     )
+
+
+# ---------------------------------------------------------------------------
+# Stateful streaming filters
+# ---------------------------------------------------------------------------
+
+
+class StatefulFilter(BlockProcessor):
+    """A filter that preserves per-channel state across ``process`` calls.
+
+    Holds one persistent DSP object per channel (built by *factory*) so that
+    audio fed in successive blocks is filtered continuously, with no per-block
+    re-initialization.  This is the key difference from the stateless functions
+    in :mod:`nanodsp.effects.filters`, which rebuild their filter on every call
+    and therefore cannot be streamed without discontinuities at block
+    boundaries.
+
+    Each per-channel object must expose ``process(x) -> y`` taking and returning
+    a 1-D float32 array and advancing/retaining internal state across calls
+    (e.g. ``nanodsp._core.filters.Biquad`` or the DaisySP filters).  Because the
+    object handles arbitrary-length input itself, :meth:`process` applies it to
+    the whole buffer with no chunking or zero-padding: calling ``process``
+    repeatedly on consecutive buffers yields exactly the same result as
+    processing their concatenation in a single call.
+
+    Parameters
+    ----------
+    factory : callable
+        Zero-argument callable returning a freshly-constructed, configured
+        per-channel filter object.
+    channels : int
+        Number of channels; one persistent object is built per channel.
+    sample_rate : float
+        Sample-rate metadata for output buffers.
+
+    Notes
+    -----
+    Not thread-safe.  Feed blocks from a single thread, or guard ``process`` /
+    :meth:`reset` with an external lock.  Use :func:`stateful_lowpass` and the
+    other ``stateful_*`` constructors for the common filters, or pass a custom
+    *factory* to wrap any stateful DSP object.
+    """
+
+    def __init__(
+        self,
+        factory: Callable[[], Any],
+        channels: int = 1,
+        sample_rate: float = 48000.0,
+    ):
+        # block_size is nominal: process() is sample-accurate over any length.
+        super().__init__(block_size=1, channels=channels, sample_rate=sample_rate)
+        self._factory = factory
+        self._procs = [factory() for _ in range(channels)]
+
+    def _apply(self, buf: AudioBuffer) -> AudioBuffer:
+        if buf.channels != self.channels:
+            raise ValueError(
+                f"StatefulFilter configured for {self.channels} channel(s), "
+                f"got {buf.channels}"
+            )
+        out = np.zeros_like(buf.data)
+        for ch in range(buf.channels):
+            out[ch] = np.asarray(
+                self._procs[ch].process(buf.ensure_1d(ch)), dtype=np.float32
+            )
+        return AudioBuffer(
+            out,
+            sample_rate=buf.sample_rate,
+            channel_layout=buf.channel_layout,
+            label=buf.label,
+        )
+
+    def process_block(self, block: AudioBuffer) -> AudioBuffer:
+        """Filter one block, retaining state for the next call."""
+        return self._apply(block)
+
+    def process(self, buf: AudioBuffer) -> AudioBuffer:
+        """Filter an entire buffer continuously (no chunking or padding)."""
+        return self._apply(buf)
+
+    def reset(self) -> None:
+        """Rebuild every per-channel object, clearing all filter state."""
+        self._procs = [self._factory() for _ in range(self.channels)]
+
+
+def _biquad_factory(
+    method: str, freq: float, octaves: float | None, design: str | int
+) -> Callable[[], Any]:
+    """Build a factory producing configured signalsmith ``Biquad`` objects.
+
+    Mirrors the configuration used by :mod:`nanodsp.effects.filters` so a
+    streamed filter matches its stateless counterpart sample-for-sample.
+    """
+    from nanodsp._core import filters
+    from nanodsp._helpers import _resolve_biquad_design
+
+    resolved = _resolve_biquad_design(design)
+
+    def factory() -> Any:
+        bq = filters.Biquad()
+        configure = getattr(bq, method)
+        if octaves is not None:
+            configure(freq, octaves, resolved)
+        else:
+            configure(freq, design=resolved)
+        return bq
+
+    return factory
+
+
+def stateful_lowpass(
+    cutoff_hz: float,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+    octaves: float | None = None,
+    design: str | int = "bilinear",
+) -> StatefulFilter:
+    """Streaming biquad lowpass (see :func:`nanodsp.effects.filters.lowpass`)."""
+    from nanodsp._helpers import _hz_to_normalized
+
+    freq = _hz_to_normalized(cutoff_hz, sample_rate)
+    return StatefulFilter(
+        _biquad_factory("lowpass", freq, octaves, design),
+        channels=channels,
+        sample_rate=sample_rate,
+    )
+
+
+def stateful_highpass(
+    cutoff_hz: float,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+    octaves: float | None = None,
+    design: str | int = "bilinear",
+) -> StatefulFilter:
+    """Streaming biquad highpass (see :func:`nanodsp.effects.filters.highpass`)."""
+    from nanodsp._helpers import _hz_to_normalized
+
+    freq = _hz_to_normalized(cutoff_hz, sample_rate)
+    return StatefulFilter(
+        _biquad_factory("highpass", freq, octaves, design),
+        channels=channels,
+        sample_rate=sample_rate,
+    )
+
+
+def stateful_bandpass(
+    center_hz: float,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+    octaves: float | None = None,
+    design: str | int = "one_sided",
+) -> StatefulFilter:
+    """Streaming biquad bandpass (see :func:`nanodsp.effects.filters.bandpass`)."""
+    from nanodsp._helpers import _hz_to_normalized
+
+    freq = _hz_to_normalized(center_hz, sample_rate)
+    return StatefulFilter(
+        _biquad_factory("bandpass", freq, octaves, design),
+        channels=channels,
+        sample_rate=sample_rate,
+    )
+
+
+def stateful_notch(
+    center_hz: float,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+    octaves: float | None = None,
+    design: str | int = "one_sided",
+) -> StatefulFilter:
+    """Streaming biquad notch (see :func:`nanodsp.effects.filters.notch`)."""
+    from nanodsp._helpers import _hz_to_normalized
+
+    freq = _hz_to_normalized(center_hz, sample_rate)
+    return StatefulFilter(
+        _biquad_factory("notch", freq, octaves, design),
+        channels=channels,
+        sample_rate=sample_rate,
+    )
+
+
+def stateful_moog_ladder(
+    cutoff_hz: float,
+    resonance: float = 0.0,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulFilter:
+    """Streaming DaisySP Moog ladder lowpass.
+
+    Demonstrates that :class:`StatefulFilter` generalizes beyond the signalsmith
+    biquads to any stateful per-channel DSP object.
+    """
+    from nanodsp._helpers import _dsy_filt
+
+    def factory() -> Any:
+        f = _dsy_filt.MoogLadder()
+        f.init(sample_rate)
+        f.set_freq(cutoff_hz)
+        f.set_res(resonance)
+        return f
+
+    return StatefulFilter(factory, channels=channels, sample_rate=sample_rate)

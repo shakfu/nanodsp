@@ -45,6 +45,7 @@ nanodsp = "nanodsp.__main__:main"
 
 [dependency-groups]
 dev = [
+    "argcomplete>=3.0",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.5",
     "mkdocstrings[python]>=1.0.3",
@@ -109,3 +110,13 @@ environment = { MACOSX_DEPLOYMENT_TARGET = "10.15" }
 
 [tool.cibuildwheel.windows]
 archs = "AMD64"
+
+[tool.coverage.run]
+source = ["src/nanodsp"]
+
+[tool.coverage.report]
+# Gate: coverage runs (make coverage, CI --cov) fail below this threshold.
+# Current coverage is ~94%; this floor catches meaningful regressions while
+# tolerating small platform/Python-version variation.
+fail_under = 90
+show_missing = true
