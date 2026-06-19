@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
@@ -188,6 +190,27 @@ def dust(
 # ---------------------------------------------------------------------------
 
 
+def _synth_triggered(
+    obj: Any,
+    setters: dict[str, Any],
+    frames: int,
+    sample_rate: float,
+) -> AudioBuffer:
+    """Initialise, configure, trigger, and render a one-shot DaisySP voice.
+
+    *obj* is a freshly-constructed DaisySP drum or voice; *setters* maps setter
+    method names to their values (applied in order). The object is initialised
+    at *sample_rate*, each setter applied, triggered once, and rendered to
+    *frames* mono samples.
+    """
+    obj.init(sample_rate)
+    for name, value in setters.items():
+        getattr(obj, name)(value)
+    obj.trig()
+    data = obj.process(frames)
+    return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
+
+
 def analog_bass_drum(
     frames: int,
     freq: float = 60.0,
@@ -200,18 +223,20 @@ def analog_bass_drum(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate an analog bass drum hit (triggered at sample 0)."""
-    d = _dsy_drums.AnalogBassDrum()
-    d.init(sample_rate)
-    d.set_freq(freq)
-    d.set_tone(tone)
-    d.set_decay(decay)
-    d.set_accent(accent)
-    d.set_sustain(sustain)
-    d.set_attack_fm_amount(attack_fm)
-    d.set_self_fm_amount(self_fm)
-    d.trig()
-    data = d.process(frames)
-    return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
+    return _synth_triggered(
+        _dsy_drums.AnalogBassDrum(),
+        {
+            "set_freq": freq,
+            "set_tone": tone,
+            "set_decay": decay,
+            "set_accent": accent,
+            "set_sustain": sustain,
+            "set_attack_fm_amount": attack_fm,
+            "set_self_fm_amount": self_fm,
+        },
+        frames,
+        sample_rate,
+    )
 
 
 def analog_snare_drum(
@@ -225,17 +250,19 @@ def analog_snare_drum(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate an analog snare drum hit (triggered at sample 0)."""
-    d = _dsy_drums.AnalogSnareDrum()
-    d.init(sample_rate)
-    d.set_freq(freq)
-    d.set_tone(tone)
-    d.set_decay(decay)
-    d.set_snappy(snappy)
-    d.set_accent(accent)
-    d.set_sustain(sustain)
-    d.trig()
-    data = d.process(frames)
-    return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
+    return _synth_triggered(
+        _dsy_drums.AnalogSnareDrum(),
+        {
+            "set_freq": freq,
+            "set_tone": tone,
+            "set_decay": decay,
+            "set_snappy": snappy,
+            "set_accent": accent,
+            "set_sustain": sustain,
+        },
+        frames,
+        sample_rate,
+    )
 
 
 def hihat(
@@ -249,17 +276,19 @@ def hihat(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate a hi-hat hit (triggered at sample 0)."""
-    d = _dsy_drums.HiHat()
-    d.init(sample_rate)
-    d.set_freq(freq)
-    d.set_tone(tone)
-    d.set_decay(decay)
-    d.set_noisiness(noisiness)
-    d.set_accent(accent)
-    d.set_sustain(sustain)
-    d.trig()
-    data = d.process(frames)
-    return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
+    return _synth_triggered(
+        _dsy_drums.HiHat(),
+        {
+            "set_freq": freq,
+            "set_tone": tone,
+            "set_decay": decay,
+            "set_noisiness": noisiness,
+            "set_accent": accent,
+            "set_sustain": sustain,
+        },
+        frames,
+        sample_rate,
+    )
 
 
 def synthetic_bass_drum(
@@ -275,19 +304,21 @@ def synthetic_bass_drum(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate a synthetic bass drum hit (triggered at sample 0)."""
-    d = _dsy_drums.SyntheticBassDrum()
-    d.init(sample_rate)
-    d.set_freq(freq)
-    d.set_tone(tone)
-    d.set_decay(decay)
-    d.set_dirtiness(dirtiness)
-    d.set_fm_envelope_amount(fm_env_amount)
-    d.set_fm_envelope_decay(fm_env_decay)
-    d.set_accent(accent)
-    d.set_sustain(sustain)
-    d.trig()
-    data = d.process(frames)
-    return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
+    return _synth_triggered(
+        _dsy_drums.SyntheticBassDrum(),
+        {
+            "set_freq": freq,
+            "set_tone": tone,
+            "set_decay": decay,
+            "set_dirtiness": dirtiness,
+            "set_fm_envelope_amount": fm_env_amount,
+            "set_fm_envelope_decay": fm_env_decay,
+            "set_accent": accent,
+            "set_sustain": sustain,
+        },
+        frames,
+        sample_rate,
+    )
 
 
 def synthetic_snare_drum(
@@ -301,17 +332,19 @@ def synthetic_snare_drum(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate a synthetic snare drum hit (triggered at sample 0)."""
-    d = _dsy_drums.SyntheticSnareDrum()
-    d.init(sample_rate)
-    d.set_freq(freq)
-    d.set_decay(decay)
-    d.set_snappy(snappy)
-    d.set_fm_amount(fm_amount)
-    d.set_accent(accent)
-    d.set_sustain(sustain)
-    d.trig()
-    data = d.process(frames)
-    return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
+    return _synth_triggered(
+        _dsy_drums.SyntheticSnareDrum(),
+        {
+            "set_freq": freq,
+            "set_decay": decay,
+            "set_snappy": snappy,
+            "set_fm_amount": fm_amount,
+            "set_accent": accent,
+            "set_sustain": sustain,
+        },
+        frames,
+        sample_rate,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -351,17 +384,19 @@ def modal_voice(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate a modal voice hit (triggered at sample 0)."""
-    mv = _dsy_pm.ModalVoice()
-    mv.init(sample_rate)
-    mv.set_freq(freq)
-    mv.set_accent(accent)
-    mv.set_structure(structure)
-    mv.set_brightness(brightness)
-    mv.set_damping(damping)
-    mv.set_sustain(sustain)
-    mv.trig()
-    data = mv.process(frames)
-    return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
+    return _synth_triggered(
+        _dsy_pm.ModalVoice(),
+        {
+            "set_freq": freq,
+            "set_accent": accent,
+            "set_structure": structure,
+            "set_brightness": brightness,
+            "set_damping": damping,
+            "set_sustain": sustain,
+        },
+        frames,
+        sample_rate,
+    )
 
 
 def string_voice(
@@ -375,17 +410,19 @@ def string_voice(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate a string voice hit (triggered at sample 0)."""
-    sv = _dsy_pm.StringVoice()
-    sv.init(sample_rate)
-    sv.set_freq(freq)
-    sv.set_accent(accent)
-    sv.set_structure(structure)
-    sv.set_brightness(brightness)
-    sv.set_damping(damping)
-    sv.set_sustain(sustain)
-    sv.trig()
-    data = sv.process(frames)
-    return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
+    return _synth_triggered(
+        _dsy_pm.StringVoice(),
+        {
+            "set_freq": freq,
+            "set_accent": accent,
+            "set_structure": structure,
+            "set_brightness": brightness,
+            "set_damping": damping,
+            "set_sustain": sustain,
+        },
+        frames,
+        sample_rate,
+    )
 
 
 def pluck(

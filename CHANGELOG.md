@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **DaisySP binding deduplication** -- extracted three templated helpers in `_core_common.h` (`util_process_mono`, `util_generate_mono`, `util_trigger_generate_mono`) that factor out the repeated per-sample binding pattern (output allocation, GIL release, processing loop, ownership transfer to numpy). Applied them across `_core_daisysp.cpp` at 57 call sites, reducing the file from 1560 to 1266 lines (~19%) and centralizing the GIL-release/allocation contract. Behavior is unchanged; `Pluck` retains a bespoke binding because its `Process(float&)` signature is incompatible with the shared helper.
 
+- **Centralized mono/multi-channel return-shape policy** -- added a `_squeeze_mono` helper and applied it across the six `nanodsp.analysis` spectral features and `pitch_detect`, replacing the copy-pasted squeeze-if-mono idiom. Behavior is unchanged: a mono input drops the leading channel axis, multi-channel input keeps it.
+
+- **Factored synthesis/ops boilerplate** -- introduced `_synth_triggered` (drives the five DaisySP drums plus the modal and string voices), `_apply_envelope` (backs `box_filter`, `box_stack_filter`, `peak_hold`, `peak_decay`), and `_process_mix_frames` (backs `hadamard` and `householder`), removing the repeated init/configure/trigger/render and per-frame mixing loops. No behavior change.
+
 ### Fixed
 
 - **README API reference and quick start** -- corrected the documented examples to match the current API after the `effects` package split and parameter renames. Imports now use the real submodule paths (e.g. `nanodsp.effects.filters`, `nanodsp.effects.dynamics`); parameter names were fixed (e.g. `cutoff_hz`/`center_hz`, `resonance`, `lfo_freq`, `bit_depth`, `lp_freq`); spectral examples reflect that most transforms operate on a `Spectrogram`; and the `synth_sequence`, `CallbackProcessor`, and `ProcessorChain` call shapes were corrected. The reference catalog is now grouped by submodule, and all documented snippets were verified to execute.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Callable, Literal
 
 import numpy as np
 
@@ -115,6 +115,23 @@ def delay_varying(
 # ---------------------------------------------------------------------------
 
 
+def _apply_envelope(
+    buf: AudioBuffer, factory: Callable[[], Any], window: int
+) -> AudioBuffer:
+    """Run a signalsmith envelope object per channel.
+
+    *factory* constructs a fresh envelope instance; *window* is the length
+    passed to its ``set()`` method before processing each channel.
+    """
+
+    def _process(x: np.ndarray) -> np.ndarray:
+        env = factory()
+        env.set(window)
+        return env.process(x)
+
+    return _process_per_channel(buf, _process)
+
+
 def box_filter(buf: AudioBuffer, length: int) -> AudioBuffer:
     """Apply a BoxFilter (moving average) per channel.
 
@@ -130,13 +147,7 @@ def box_filter(buf: AudioBuffer, length: int) -> AudioBuffer:
     AudioBuffer
         Smoothed audio.
     """
-
-    def _process(x):
-        bf = envelopes.BoxFilter(length)
-        bf.set(length)
-        return bf.process(x)
-
-    return _process_per_channel(buf, _process)
+    return _apply_envelope(buf, lambda: envelopes.BoxFilter(length), length)
 
 
 def box_stack_filter(buf: AudioBuffer, size: int, layers: int = 4) -> AudioBuffer:
@@ -156,13 +167,7 @@ def box_stack_filter(buf: AudioBuffer, size: int, layers: int = 4) -> AudioBuffe
     AudioBuffer
         Smoothed audio.
     """
-
-    def _process(x):
-        bs = envelopes.BoxStackFilter(size, layers)
-        bs.set(size)
-        return bs.process(x)
-
-    return _process_per_channel(buf, _process)
+    return _apply_envelope(buf, lambda: envelopes.BoxStackFilter(size, layers), size)
 
 
 def peak_hold(buf: AudioBuffer, length: int) -> AudioBuffer:
@@ -180,13 +185,7 @@ def peak_hold(buf: AudioBuffer, length: int) -> AudioBuffer:
     AudioBuffer
         Peak-held envelope.
     """
-
-    def _process(x):
-        ph = envelopes.PeakHold(length)
-        ph.set(length)
-        return ph.process(x)
-
-    return _process_per_channel(buf, _process)
+    return _apply_envelope(buf, lambda: envelopes.PeakHold(length), length)
 
 
 def peak_decay(buf: AudioBuffer, length: int) -> AudioBuffer:
@@ -204,13 +203,7 @@ def peak_decay(buf: AudioBuffer, length: int) -> AudioBuffer:
     AudioBuffer
         Peak-decayed envelope.
     """
-
-    def _process(x):
-        pd = envelopes.PeakDecayLinear(length)
-        pd.set(length)
-        return pd.process(x)
-
-    return _process_per_channel(buf, _process)
+    return _apply_envelope(buf, lambda: envelopes.PeakDecayLinear(length), length)
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +427,24 @@ def oversample_roundtrip(
 # ---------------------------------------------------------------------------
 
 
+def _process_mix_frames(buf: AudioBuffer, mixer: Any) -> AudioBuffer:
+    """Apply an in-place channel mixer to every frame of *buf*.
+
+    *mixer* exposes ``in_place(frame)`` operating on a 1D per-frame vector of
+    channel samples (used by the signalsmith Hadamard/Householder matrices).
+    """
+    out = np.zeros_like(buf.data)
+    for i in range(buf.frames):
+        frame = np.ascontiguousarray(buf.data[:, i].copy())
+        out[:, i] = mixer.in_place(frame)
+    return AudioBuffer(
+        out,
+        sample_rate=buf.sample_rate,
+        channel_layout=buf.channel_layout,
+        label=buf.label,
+    )
+
+
 def hadamard(buf: AudioBuffer) -> AudioBuffer:
     """Apply Hadamard mixing across channels at each frame.
 
@@ -452,17 +463,7 @@ def hadamard(buf: AudioBuffer) -> AudioBuffer:
     ch = buf.channels
     if ch == 0 or (ch & (ch - 1)) != 0:
         raise ValueError(f"Hadamard requires power-of-2 channel count, got {ch}")
-    h = mix.Hadamard(ch)
-    out = np.zeros_like(buf.data)
-    for i in range(buf.frames):
-        frame = np.ascontiguousarray(buf.data[:, i].copy())
-        out[:, i] = h.in_place(frame)
-    return AudioBuffer(
-        out,
-        sample_rate=buf.sample_rate,
-        channel_layout=buf.channel_layout,
-        label=buf.label,
-    )
+    return _process_mix_frames(buf, mix.Hadamard(ch))
 
 
 def householder(buf: AudioBuffer) -> AudioBuffer:
@@ -478,18 +479,7 @@ def householder(buf: AudioBuffer) -> AudioBuffer:
     AudioBuffer
         Householder-mixed audio.
     """
-    ch = buf.channels
-    h = mix.Householder(ch)
-    out = np.zeros_like(buf.data)
-    for i in range(buf.frames):
-        frame = np.ascontiguousarray(buf.data[:, i].copy())
-        out[:, i] = h.in_place(frame)
-    return AudioBuffer(
-        out,
-        sample_rate=buf.sample_rate,
-        channel_layout=buf.channel_layout,
-        label=buf.label,
-    )
+    return _process_mix_frames(buf, mix.Householder(buf.channels))
 
 
 def crossfade(buf_a: AudioBuffer, buf_b: AudioBuffer, x: float) -> AudioBuffer:

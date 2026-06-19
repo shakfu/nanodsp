@@ -80,6 +80,20 @@ def _process_per_channel(buf: AudioBuffer, process_fn) -> AudioBuffer:
     )
 
 
+def _squeeze_mono(arr: np.ndarray) -> np.ndarray:
+    """Drop a leading singleton channel axis.
+
+    Per-channel feature extractors build ``[channels, ...]`` arrays. By
+    convention the result for a mono input (one channel) is returned with the
+    leading channel axis removed, while multi-channel input keeps that axis.
+    Centralizing this rule keeps the return-shape policy uniform across the
+    analysis API.
+    """
+    if arr.shape[0] == 1:
+        return arr[0]
+    return arr
+
+
 # ---------------------------------------------------------------------------
 # DaisySP submodule aliases
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import numpy as np
 
 from nanodsp.buffer import AudioBuffer
 from nanodsp.spectral import stft
+from nanodsp._helpers import _squeeze_mono
 from nanodsp._core import filters, madronalib as _madronalib
 
 # Small constants to prevent log(0) and division-by-zero in numerical computations.
@@ -198,9 +199,7 @@ def spectral_centroid(
     total = np.sum(mag, axis=2)
     safe_total = np.where(total > 0, total, 1.0)
     centroid = np.where(total > 0, weighted / safe_total, 0.0).astype(np.float32)
-    if centroid.shape[0] == 1:
-        return centroid[0]
-    return centroid
+    return _squeeze_mono(centroid)
 
 
 def spectral_bandwidth(
@@ -221,9 +220,7 @@ def spectral_bandwidth(
     diff_sq = (freqs[np.newaxis, np.newaxis, :] - cent[:, :, np.newaxis]) ** 2
     variance = np.sum(mag * diff_sq, axis=2)
     bw = np.where(total > 0, np.sqrt(variance / safe_total), 0.0).astype(np.float32)
-    if bw.shape[0] == 1:
-        return bw[0]
-    return bw
+    return _squeeze_mono(bw)
 
 
 def spectral_rolloff(
@@ -257,9 +254,7 @@ def spectral_rolloff(
         for t in range(n_frames):
             idx = np.argmax(above[ch, t])
             rolloff[ch, t] = freqs[idx]
-    if rolloff.shape[0] == 1:
-        return rolloff[0]
-    return rolloff
+    return _squeeze_mono(rolloff)
 
 
 def spectral_flux(
@@ -281,9 +276,7 @@ def spectral_flux(
         if rectify:
             diff = np.maximum(diff, 0.0)
         flux[:, t] = np.sqrt(np.sum(diff**2, axis=1))
-    if flux.shape[0] == 1:
-        return flux[0]
-    return flux
+    return _squeeze_mono(flux)
 
 
 def spectral_flatness_curve(
@@ -303,9 +296,7 @@ def spectral_flatness_curve(
     flatness = np.where(arith_mean > _DIV_EPS, geo_mean / arith_mean, 0.0).astype(
         np.float32
     )
-    if flatness.shape[0] == 1:
-        return flatness[0]
-    return flatness
+    return _squeeze_mono(flatness)
 
 
 def chromagram(
@@ -337,9 +328,7 @@ def chromagram(
             # mag[:, :, b] has shape [n_ch, n_frames]
             chroma_result[:, pc, :] += mag[:, :, b]
 
-    if chroma_result.shape[0] == 1:
-        return chroma_result[0]
-    return chroma_result
+    return _squeeze_mono(chroma_result)
 
 
 # ---------------------------------------------------------------------------
@@ -487,9 +476,7 @@ def pitch_detect(
                 all_freqs[ch, t] = 0.0
                 all_confs[ch, t] = 0.0
 
-    if buf.channels == 1:
-        return all_freqs[0], all_confs[0]
-    return all_freqs, all_confs
+    return _squeeze_mono(all_freqs), _squeeze_mono(all_confs)
 
 
 # ---------------------------------------------------------------------------
