@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7]
+
 ### Added
 
 - **User-defined CLI presets** -- the CLI now loads custom presets from `~/.nanodsp/presets.json` (or the path in `$NANODSP_PRESETS`) and merges them with the built-ins; a user preset overrides a built-in of the same name. They work in `preset list`, `preset info`, `preset apply`, and `process -p`. Each entry uses the same JSON shape as a built-in (a single `fn` + `defaults`, or a `chain` of `[module, function, params]` steps). Malformed preset files produce a clean error.

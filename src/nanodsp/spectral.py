@@ -237,11 +237,11 @@ def apply_mask(spec: Spectrogram, mask: np.ndarray) -> Spectrogram:
     """
     try:
         result = spec.data * mask
-    except ValueError:
+    except ValueError as exc:
         raise ValueError(
             f"Mask shape {mask.shape} is not broadcastable to "
             f"spectrogram shape {spec.data.shape}"
-        )
+        ) from exc
     return Spectrogram(
         data=result.astype(np.complex64),
         window_size=spec.window_size,

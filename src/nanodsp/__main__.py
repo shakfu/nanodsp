@@ -465,7 +465,6 @@ _SYNTH_SUBCOMMANDS = {"sine", "noise", "drum", "note", "sequence", "oscillator",
 def cmd_synth(args: argparse.Namespace) -> None:
     """Generate audio and write to file."""
     from nanodsp import synthesis as _synthesis
-    from nanodsp.buffer import AudioBuffer
 
     sr = float(args.sample_rate or 48000)
     duration = float(args.duration or 1.0)

@@ -2,6 +2,6 @@
 
 from nanodsp.buffer import AudioBuffer
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 __all__ = ["AudioBuffer", "__version__"]

@@ -248,7 +248,7 @@ def spectral_rolloff(
     threshold = percentile * total
     # For each frame, find the first bin where cumulative >= threshold
     above = cumulative >= threshold
-    n_ch, n_frames, n_bins = mag.shape
+    n_ch, n_frames, _ = mag.shape
     rolloff = np.zeros((n_ch, n_frames), dtype=np.float32)
     for ch in range(n_ch):
         for t in range(n_frames):
