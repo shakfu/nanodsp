@@ -119,4 +119,6 @@ Available instruments: `clarinet`, `flute`, `brass`, `bowed`, `plucked`, `sitar`
 
 ## API reference
 
-::: nanodsp.synthesis options: show_if_no_docstring: false
+::: nanodsp.synthesis
+    options:
+      show_if_no_docstring: false

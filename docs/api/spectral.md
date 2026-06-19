@@ -113,4 +113,6 @@ b = spectral.freq_to_bin(spec, freq_hz=1000.0)   # Hz -> bin
 
 ## API reference
 
-::: nanodsp.spectral options: show_if_no_docstring: false
+::: nanodsp.spectral
+    options:
+      show_if_no_docstring: false

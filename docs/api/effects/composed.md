@@ -228,4 +228,6 @@ vocals = composed.vocal_chain(
 
 ## API reference
 
-::: nanodsp.effects.composed options: show_if_no_docstring: false
+::: nanodsp.effects.composed
+    options:
+      show_if_no_docstring: false

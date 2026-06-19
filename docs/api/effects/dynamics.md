@@ -65,4 +65,6 @@ fast = dynamics.agc(buf, attack=0.005, release=0.005, average_len=50)
 
 ## API reference
 
-::: nanodsp.effects.dynamics options: show_if_no_docstring: false
+::: nanodsp.effects.dynamics
+    options:
+      show_if_no_docstring: false

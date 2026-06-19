@@ -98,7 +98,9 @@ samples = buf[0, 100:200] # numpy slice of channel 0, frames 100-199
 
 ## API reference
 
-::: nanodsp.buffer.AudioBuffer options: members:
+::: nanodsp.buffer.AudioBuffer
+    options:
+      members:
         - __init__
 
         - data

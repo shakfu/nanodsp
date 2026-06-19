@@ -94,4 +94,6 @@ out = process_blocks(buf, fn=spectral_fn, block_size=2048, hop_size=512)
 
 ## API reference
 
-::: nanodsp.stream options: show_if_no_docstring: false
+::: nanodsp.stream
+    options:
+      show_if_no_docstring: false

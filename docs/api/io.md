@@ -43,7 +43,9 @@ sys.stdout.buffer.write(out_bytes)
 
 ## API reference
 
-::: nanodsp.io options: members:
+::: nanodsp.io
+    options:
+      members:
         - read
 
         - write

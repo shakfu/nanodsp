@@ -140,4 +140,6 @@ output, error = ops.lms_filter(
 
 ## API reference
 
-::: nanodsp.ops options: show_if_no_docstring: false
+::: nanodsp.ops
+    options:
+      show_if_no_docstring: false

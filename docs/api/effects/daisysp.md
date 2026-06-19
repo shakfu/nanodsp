@@ -77,4 +77,6 @@ clean = daisysp.dc_block(buf)
 
 ## API reference
 
-::: nanodsp.effects.daisysp options: show_if_no_docstring: false
+::: nanodsp.effects.daisysp
+    options:
+      show_if_no_docstring: false

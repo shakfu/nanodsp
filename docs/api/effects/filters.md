@@ -116,4 +116,6 @@ sos = filters.iir_design(
 
 ## API reference
 
-::: nanodsp.effects.filters options: show_if_no_docstring: false
+::: nanodsp.effects.filters
+    options:
+      show_if_no_docstring: false

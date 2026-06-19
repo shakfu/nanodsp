@@ -49,4 +49,6 @@ clean = saturation.aa_hard_clip(buf, drive=10.0)
 
 ## API reference
 
-::: nanodsp.effects.saturation options: show_if_no_docstring: false
+::: nanodsp.effects.saturation
+    options:
+      show_if_no_docstring: false

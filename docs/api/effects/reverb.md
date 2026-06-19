@@ -73,4 +73,6 @@ echoed = reverb.stk_echo(buf, delay_ms=250.0, mix=0.5)
 
 ## API reference
 
-::: nanodsp.effects.reverb options: show_if_no_docstring: false
+::: nanodsp.effects.reverb
+    options:
+      show_if_no_docstring: false
