@@ -8,7 +8,7 @@ Measures integrated loudness per the broadcast standard. Applies K-weighting, co
 
 ```python
 from nanodsp import analysis
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 

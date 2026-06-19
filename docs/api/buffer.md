@@ -8,7 +8,7 @@ The central data type. A 2D `float32` numpy array with shape `[channels, frames]
 
 ```python
 import numpy as np
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 # From a numpy array
 arr = np.zeros((2, 44100), dtype=np.float32)
@@ -98,37 +98,65 @@ samples = buf[0, 100:200] # numpy slice of channel 0, frames 100-199
 
 ## API reference
 
-::: nanodsp.buffer.AudioBuffer
-    options:
-      members:
+::: nanodsp.buffer.AudioBuffer options: members:
         - __init__
+
         - data
+
         - sample_rate
+
         - channels
+
         - frames
+
         - duration
+
         - channel_layout
+
         - label
+
         - dtype
+
         - channel
+
         - mono
+
         - __getitem__
+
         - __len__
+
         - zeros
+
         - ones
+
         - impulse
+
         - sine
+
         - noise
+
         - from_numpy
+
         - from_file
+
         - write
+
         - to_mono
+
         - to_channels
+
         - split
+
         - concat_channels
+
         - slice
+
         - gain_db
+
         - pipe
+
         - copy
+
         - ensure_1d
+
         - ensure_2d

@@ -8,7 +8,7 @@ Higher-level effects built by combining multiple primitives: exciter, de-esser, 
 
 ```python
 from nanodsp.effects import composed
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -228,6 +228,4 @@ vocals = composed.vocal_chain(
 
 ## API reference
 
-::: nanodsp.effects.composed
-    options:
-      show_if_no_docstring: false
+::: nanodsp.effects.composed options: show_if_no_docstring: false

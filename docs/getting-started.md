@@ -3,8 +3,11 @@
 ## Requirements
 
 - Python >= 3.10
+
 - numpy
+
 - C++17 compiler (for building from source)
+
 - CMake >= 3.15 (for building from source)
 
 ## Installation
@@ -32,7 +35,7 @@ Use `make help` for additional targets (build, test, lint, format, typecheck, qa
 ### Loading audio
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 # From file
 buf = AudioBuffer.from_file("input.wav")
@@ -97,8 +100,11 @@ mixed = buf_a + buf_b
 All DSP functions accept and return `AudioBuffer` objects. The processing pipeline is:
 
 1. **AudioBuffer** wraps a 2D float32 numpy array `[channels, frames]` with metadata
+
 2. **Python functions** validate parameters and delegate to C++ bindings
+
 3. **C++ layer** processes audio with GIL released for thread safety
+
 4. **Result** is returned as a new AudioBuffer (functions are non-mutating)
 
 ```

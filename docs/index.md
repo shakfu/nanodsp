@@ -5,15 +5,19 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 ## Features
 
 - **190+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing, granular synthesis
+
 - **11 C++ backends** -- signalsmith, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP
+
 - **Zero-copy where possible** -- numpy arrays pass directly to C++ with GIL release for true multi-threaded parallelism
+
 - **CLI included** -- process, analyze, synthesize, convert, and benchmark audio from the command line
+
 - **30 built-in presets** -- mastering, voice, spatial, dynamics, creative, lo-fi, cleanup
 
 ## Quick start
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 from nanodsp.effects import filters, dynamics
 from nanodsp import analysis
 

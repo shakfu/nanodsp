@@ -8,7 +8,7 @@ Low-level DSP building blocks: delay, envelopes, FFT, convolution, sample rates,
 
 ```python
 from nanodsp import ops
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -140,6 +140,4 @@ output, error = ops.lms_filter(
 
 ## API reference
 
-::: nanodsp.ops
-    options:
-      show_if_no_docstring: false
+::: nanodsp.ops options: show_if_no_docstring: false

@@ -8,7 +8,7 @@ Loudness metering, spectral features, pitch detection, onset detection, and resa
 
 ```python
 from nanodsp import analysis
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -84,6 +84,4 @@ print(f"Estimated delay: {delay_sec * 1000:.2f} ms")
 
 ## API reference
 
-::: nanodsp.analysis
-    options:
-      show_if_no_docstring: false
+::: nanodsp.analysis options: show_if_no_docstring: false

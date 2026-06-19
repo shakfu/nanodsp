@@ -8,7 +8,7 @@ A fixed-capacity circular buffer for producer/consumer audio workflows. Write au
 
 ```python
 from nanodsp.stream import RingBuffer
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 # Create a stereo ring buffer with 8192 frames
 rb = RingBuffer(channels=2, capacity=8192, sample_rate=48000)
@@ -31,8 +31,7 @@ peeked = rb.peek(256)
 rb.clear()
 ```
 
-!!! warning
-    RingBuffer is **not thread-safe**. Use external synchronization if accessing from multiple threads.
+!!! warning RingBuffer is **not thread-safe**. Use external synchronization if accessing from multiple threads.
 
 ## Block processor
 

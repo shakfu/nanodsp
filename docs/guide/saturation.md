@@ -7,11 +7,13 @@ Waveshaping algorithms that add harmonics by applying nonlinear transfer functio
 Three modes with different transfer curves:
 
 - **Soft (tanh)** -- smooth, symmetrical clipping. Adds primarily odd harmonics. Sounds warm.
+
 - **Hard (clip)** -- abrupt clipping at +/-1.0. Harsh, buzzy harmonics.
+
 - **Tape** -- asymmetric soft clip (`x - x^3/3`). Adds both even and odd harmonics, emulating tape saturation.
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 from nanodsp.effects.saturation import saturate, aa_hard_clip, aa_soft_clip, aa_wavefold
 
 buf = AudioBuffer.from_file("input.wav")
@@ -71,7 +73,7 @@ fold_dist = fold(buf, increment=1.5)
 
 ```python
 import numpy as np
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 from nanodsp.effects.saturation import saturate, aa_hard_clip
 
 # High-frequency sine -- aliasing is most audible here

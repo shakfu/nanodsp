@@ -8,7 +8,7 @@ The STFT decomposes a signal into overlapping windowed frames, applies an FFT to
 
 ```python
 from nanodsp import spectral
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 

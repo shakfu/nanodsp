@@ -8,7 +8,7 @@ Compression, limiting, noise gate, and automatic gain control.
 
 ```python
 from nanodsp.effects import dynamics
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -65,6 +65,4 @@ fast = dynamics.agc(buf, attack=0.005, release=0.005, average_len=50)
 
 ## API reference
 
-::: nanodsp.effects.dynamics
-    options:
-      show_if_no_docstring: false
+::: nanodsp.effects.dynamics options: show_if_no_docstring: false

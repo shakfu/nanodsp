@@ -7,7 +7,7 @@ Dynamics processors control the amplitude envelope of a signal.
 Reduces dynamic range by attenuating signals above a threshold. The `ratio` controls how much (4:1 means 4 dB above threshold produces 1 dB of output above threshold).
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 from nanodsp.effects.dynamics import compress, limit, noise_gate, agc
 from nanodsp.effects.composed import parallel_compress, multiband_compress
 

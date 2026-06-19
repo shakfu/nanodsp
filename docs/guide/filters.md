@@ -16,7 +16,7 @@ Four design methods trade off different characteristics:
 | `"vicanek"` | Accurate magnitude at high frequencies |
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 from nanodsp.effects.filters import (
     lowpass, highpass, bandpass, notch,
     peak_db, high_shelf_db, low_shelf_db, allpass,

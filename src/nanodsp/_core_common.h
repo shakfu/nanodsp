@@ -41,6 +41,51 @@ inline NpCF1 make_cf1(std::complex<float> *data, size_t n) {
     return NpCF1(data, {n}, del);
 }
 
+// ---------------------------------------------------------------------------
+// Mono block-processing helpers
+//
+// These factor out the dominant per-sample binding patterns (allocate output,
+// release the GIL, loop, hand ownership to numpy). They are templated on the
+// DSP object type so any class exposing the expected Process() shape can reuse
+// them. Multi-output / multi-channel / block APIs keep bespoke bindings.
+// ---------------------------------------------------------------------------
+
+// Process a mono buffer sample-by-sample: out[i] = self.Process(in[i]).
+// A local lvalue is used so this works whether Process takes float,
+// const float&, or a non-const float& (the legacy DaisySP signature).
+template <typename T>
+inline NpF1 util_process_mono(T &self, ArrayF input) {
+    size_t n = input.shape(0);
+    auto *out = new float[n];
+    const float *in = input.data();
+    { nb::gil_scoped_release rel;
+      for (size_t i = 0; i < n; ++i) { float v = in[i]; out[i] = self.Process(v); }
+    }
+    return make_f1(out, n);
+}
+
+// Generate n samples from a nullary generator: out[i] = self.Process().
+template <typename T>
+inline NpF1 util_generate_mono(T &self, int n) {
+    auto *out = new float[(size_t)n];
+    { nb::gil_scoped_release rel;
+      for (int i = 0; i < n; ++i) out[i] = self.Process();
+    }
+    return make_f1(out, (size_t)n);
+}
+
+// Trigger on the first sample, then free-run: out[0] = Process(true),
+// out[i>0] = Process(false). Used by drums and excited voices.
+template <typename T>
+inline NpF1 util_trigger_generate_mono(T &self, int n) {
+    auto *out = new float[(size_t)n];
+    { nb::gil_scoped_release rel;
+      out[0] = self.Process(true);
+      for (int i = 1; i < n; ++i) out[i] = self.Process(false);
+    }
+    return make_f1(out, (size_t)n);
+}
+
 // Library binding entry points
 void bind_signalsmith(nb::module_ &m);
 void bind_daisysp(nb::module_ &m);

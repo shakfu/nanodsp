@@ -8,7 +8,7 @@ Short-time Fourier transform, spectral transforms, and EQ matching.
 
 ```python
 from nanodsp import spectral
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -113,6 +113,4 @@ b = spectral.freq_to_bin(spec, freq_hz=1000.0)   # Hz -> bin
 
 ## API reference
 
-::: nanodsp.spectral
-    options:
-      show_if_no_docstring: false
+::: nanodsp.spectral options: show_if_no_docstring: false

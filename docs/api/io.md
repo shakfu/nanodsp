@@ -43,14 +43,19 @@ sys.stdout.buffer.write(out_bytes)
 
 ## API reference
 
-::: nanodsp.io
-    options:
-      members:
+::: nanodsp.io options: members:
         - read
+
         - write
+
         - read_wav
+
         - write_wav
+
         - read_wav_bytes
+
         - write_wav_bytes
+
         - read_flac
+
         - write_flac

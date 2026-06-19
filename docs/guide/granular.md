@@ -7,7 +7,7 @@ Granular synthesis decomposes audio into tiny fragments ("grains") and reassembl
 ```python
 import numpy as np
 from nanodsp._core import grainflow as gf
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 # Load source audio into a GfBuffer
 source = AudioBuffer.from_file("input.wav")
@@ -57,7 +57,9 @@ stereo_block = panner.process(mono_block)
 Pan modes:
 
 - `PAN_BIPOLAR` -- grains pan across full stereo field (-1 to +1)
+
 - `PAN_UNIPOLAR` -- grains pan from center to one side (0 to +1)
+
 - `PAN_STEREO` -- preserves stereo source positioning
 
 ## Live recording

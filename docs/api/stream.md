@@ -8,7 +8,7 @@ Block-based processing, ring buffers, and processor chains for streaming audio.
 
 ```python
 from nanodsp.stream import RingBuffer
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 import numpy as np
 
 # Create a stereo ring buffer with 8192 frames of capacity
@@ -94,6 +94,4 @@ out = process_blocks(buf, fn=spectral_fn, block_size=2048, hop_size=512)
 
 ## API reference
 
-::: nanodsp.stream
-    options:
-      show_if_no_docstring: false
+::: nanodsp.stream options: show_if_no_docstring: false

@@ -8,7 +8,7 @@ Autowah, chorus, decimator, flanger, overdrive, phaser, pitch shift, sample-rate
 
 ```python
 from nanodsp.effects import daisysp
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -77,6 +77,4 @@ clean = daisysp.dc_block(buf)
 
 ## API reference
 
-::: nanodsp.effects.daisysp
-    options:
-      show_if_no_docstring: false
+::: nanodsp.effects.daisysp options: show_if_no_docstring: false

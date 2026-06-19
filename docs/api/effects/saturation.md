@@ -8,7 +8,7 @@ Saturation, distortion, and antialiased waveshaping.
 
 ```python
 from nanodsp.effects import saturation
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -49,6 +49,4 @@ clean = saturation.aa_hard_clip(buf, drive=10.0)
 
 ## API reference
 
-::: nanodsp.effects.saturation
-    options:
-      show_if_no_docstring: false
+::: nanodsp.effects.saturation options: show_if_no_docstring: false

@@ -7,7 +7,7 @@ Reverb simulates the acoustic reflections of a physical space.
 The primary reverb algorithm. Uses a matrix of 8 delay lines with feedback through a Hadamard mixing matrix and per-line damping. Five presets configure delay lengths and damping for different spaces.
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 from nanodsp.effects.reverb import (
     reverb, schroeder_reverb, moorer_reverb,
     stk_reverb, stk_chorus, stk_echo,

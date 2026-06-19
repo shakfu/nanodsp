@@ -90,7 +90,7 @@ syn_snare = synthesis.synthetic_snare_drum(
 ## Physical modeling
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 # Karplus-Strong plucked string
 excitation = AudioBuffer.noise(frames=48000, seed=42)

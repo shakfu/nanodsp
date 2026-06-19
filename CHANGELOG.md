@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Top-level `AudioBuffer` export** -- `AudioBuffer` is now re-exported from the package root, so `from nanodsp import AudioBuffer` (and `nanodsp.AudioBuffer`) work directly. Importing the package stays cheap: `buffer.py` depends only on numpy, so `import nanodsp` does not load the compiled `_core` extension. All other functionality continues to be imported from its specific submodule (e.g. `from nanodsp.effects.filters import lowpass`).
+
+### Changed
+
+- **DaisySP binding deduplication** -- extracted three templated helpers in `_core_common.h` (`util_process_mono`, `util_generate_mono`, `util_trigger_generate_mono`) that factor out the repeated per-sample binding pattern (output allocation, GIL release, processing loop, ownership transfer to numpy). Applied them across `_core_daisysp.cpp` at 57 call sites, reducing the file from 1560 to 1266 lines (~19%) and centralizing the GIL-release/allocation contract. Behavior is unchanged; `Pluck` retains a bespoke binding because its `Process(float&)` signature is incompatible with the shared helper.
+
+### Fixed
+
+- **README API reference and quick start** -- corrected the documented examples to match the current API after the `effects` package split and parameter renames. Imports now use the real submodule paths (e.g. `nanodsp.effects.filters`, `nanodsp.effects.dynamics`); parameter names were fixed (e.g. `cutoff_hz`/`center_hz`, `resonance`, `lfo_freq`, `bit_depth`, `lp_freq`); spectral examples reflect that most transforms operate on a `Spectrogram`; and the `synth_sequence`, `CallbackProcessor`, and `ProcessorChain` call shapes were corrected. The reference catalog is now grouped by submodule, and all documented snippets were verified to execute.
+
 ## [0.1.6]
 
 ### Added

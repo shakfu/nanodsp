@@ -8,7 +8,7 @@ FDN reverb (madronalib), classic Schroeder/Moorer reverbs (fxdsp), and STK rever
 
 ```python
 from nanodsp.effects import reverb
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -73,6 +73,4 @@ echoed = reverb.stk_echo(buf, delay_ms=250.0, mix=0.5)
 
 ## API reference
 
-::: nanodsp.effects.reverb
-    options:
-      show_if_no_docstring: false
+::: nanodsp.effects.reverb options: show_if_no_docstring: false

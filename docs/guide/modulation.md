@@ -3,7 +3,7 @@
 Effects that vary a parameter (usually delay time or amplitude) with an LFO.
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 from nanodsp.effects.daisysp import (
     chorus, flanger, phaser, tremolo, autowah,
     pitch_shift,

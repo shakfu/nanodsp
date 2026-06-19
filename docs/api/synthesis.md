@@ -81,7 +81,7 @@ syn_snare = synthesis.synthetic_snare_drum(
 ### Physical modeling
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 # Karplus-Strong plucked string (excites a noise burst through a filtered delay)
 excitation = AudioBuffer.noise(frames=48000, seed=42)
@@ -119,6 +119,4 @@ Available instruments: `clarinet`, `flute`, `brass`, `bowed`, `plucked`, `sitar`
 
 ## API reference
 
-::: nanodsp.synthesis
-    options:
-      show_if_no_docstring: false
+::: nanodsp.synthesis options: show_if_no_docstring: false

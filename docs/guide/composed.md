@@ -5,7 +5,7 @@ Higher-level effects built by combining multiple primitives.
 ## Mastering chains
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 from nanodsp.effects import composed
 
 buf = AudioBuffer.from_file("mix.wav")

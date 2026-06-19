@@ -8,7 +8,7 @@ Signalsmith biquad filters, DaisySP SVF/ladder/moog/tone/modal/comb, virtual ana
 
 ```python
 from nanodsp.effects import filters
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 buf = AudioBuffer.from_file("input.wav")
 
@@ -116,6 +116,4 @@ sos = filters.iir_design(
 
 ## API reference
 
-::: nanodsp.effects.filters
-    options:
-      show_if_no_docstring: false
+::: nanodsp.effects.filters options: show_if_no_docstring: false

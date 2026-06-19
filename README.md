@@ -127,16 +127,20 @@ nanodsp list effects
 
 ## Quick start
 
+`AudioBuffer` is the one name exported at the top level (`from nanodsp import AudioBuffer`); it is the central data type that carries audio through every operation. All DSP functions are imported from their specific submodule -- e.g. filters from `nanodsp.effects.filters`, dynamics from `nanodsp.effects.dynamics`, metering from `nanodsp.analysis`. Chain them with `AudioBuffer.pipe`, which feeds the buffer in as the first argument:
+
 ```python
-from nanodsp.buffer import AudioBuffer
-from nanodsp import effects, analysis
+from nanodsp import AudioBuffer
+from nanodsp.effects.filters import highpass
+from nanodsp.effects.dynamics import compress
+from nanodsp.analysis import normalize_lufs
 
 # Read, process, write
 buf = (
     AudioBuffer.from_file("input.wav")
-    .pipe(effects.highpass, freq=80.0)
-    .pipe(effects.compress, threshold=-18.0, ratio=4.0)
-    .pipe(analysis.normalize_lufs, target_lufs=-14.0)
+    .pipe(highpass, cutoff_hz=80.0)
+    .pipe(compress, threshold=-18.0, ratio=4.0)
+    .pipe(normalize_lufs, target_lufs=-14.0)
 )
 buf.write("output.wav")
 ```
@@ -148,7 +152,7 @@ buf.write("output.wav")
 The central data type. A 2D float32 array with shape `[channels, frames]` plus metadata (sample_rate, channel_layout, label).
 
 ```python
-from nanodsp.buffer import AudioBuffer
+from nanodsp import AudioBuffer
 
 # Construction
 buf = AudioBuffer(np.zeros((2, 44100), dtype=np.float32), sample_rate=44100)
@@ -180,8 +184,9 @@ buf.gain_db(-6.0)    # apply dB gain
 buf.write("output.wav")                # write WAV/FLAC (detected by extension)
 buf.write("output.flac", bit_depth=24)
 
-# Pipeline
-buf.pipe(effects.lowpass, freq=1000.0)
+# Pipeline (DSP functions are imported from their submodule)
+from nanodsp.effects.filters import lowpass
+buf.pipe(lowpass, cutoff_hz=1000.0)
 ```
 
 ### `nanodsp.io` -- Audio file I/O
@@ -250,7 +255,7 @@ ops.trim_silence(buf, threshold_db=-60.0)
 
 # Fades
 ops.fade_in(buf, duration_ms=10.0)
-ops.fade_out(buf, duration_ms=50.0, curve="exp")
+ops.fade_out(buf, duration_ms=50.0, curve="ease_out")  # linear, ease_in, ease_out, smoothstep
 
 # Panning and stereo
 ops.pan(buf, position=0.3)     # equal-power pan
@@ -275,186 +280,220 @@ output, error = ops.lms_filter(buf, ref, filter_len=32, step_size=0.01)
 
 ### `nanodsp.effects` -- Filters, effects, dynamics, mastering
 
-79 functions covering signalsmith biquad filters, DaisySP effects/filters/dynamics, composed effects, reverbs, mastering chains, STK effects, automatic gain control, antialiased waveshaping, classic reverbs, formant filtering, PSOLA pitch shifting, multi-order IIR filters, shimmer reverb, tape echo, lo-fi, telephone, gated reverb, and auto-pan.
+Over 80 functions covering signalsmith biquad filters, state-variable/ladder/tone and virtual-analog filters, multi-order IIR design, DaisySP modulation and lo-fi effects, dynamics (compression, limiting, gating, sidechain, transient shaping, AGC), saturation and antialiased waveshaping, FDN/Schroeder/Moorer/STK reverbs, composed delays and mastering/vocal chains, formant filtering, PSOLA pitch shifting, shimmer/gated reverb, lo-fi, telephone, auto-pan, and a vocoder.
 
-#### Biquad filters (signalsmith)
+Effects live in submodules under `nanodsp.effects`; import the function you need from its submodule (e.g. `from nanodsp.effects.filters import lowpass`). The groupings below show which submodule each function belongs to.
 
-All filter functions take `freq` in Hz, auto-converted to normalized frequency.
+#### Biquad filters -- `nanodsp.effects.filters`
+
+Frequencies are in Hz, auto-converted to normalized frequency. The parameter name varies by filter shape: `cutoff_hz` for low/high pass and shelves, `center_hz` for band/notch/peak, `freq_hz` for allpass. Bandwidth is set via `octaves`.
 
 ```python
-from nanodsp import effects
+from nanodsp.effects.filters import (
+    lowpass, highpass, bandpass, notch, peak, peak_db,
+    high_shelf, high_shelf_db, low_shelf, low_shelf_db, allpass,
+)
 
-effects.lowpass(buf, freq=1000.0, q=0.707)
-effects.highpass(buf, freq=80.0)
-effects.bandpass(buf, freq=1000.0, q=2.0)
-effects.notch(buf, freq=50.0)
-effects.peak(buf, freq=1000.0, gain=2.0, q=1.0)
-effects.peak_db(buf, freq=1000.0, db=6.0)
-effects.high_shelf(buf, freq=8000.0, gain=1.5)
-effects.high_shelf_db(buf, freq=8000.0, db=3.0)
-effects.low_shelf(buf, freq=200.0, gain=0.8)
-effects.low_shelf_db(buf, freq=200.0, db=-2.0)
-effects.allpass(buf, freq=1000.0)
+lowpass(buf, cutoff_hz=1000.0)
+highpass(buf, cutoff_hz=80.0)
+bandpass(buf, center_hz=1000.0, octaves=2.0)
+notch(buf, center_hz=50.0)
+peak(buf, center_hz=1000.0, gain=2.0, octaves=1.0)
+peak_db(buf, center_hz=1000.0, db=6.0)
+high_shelf(buf, cutoff_hz=8000.0, gain=1.5)
+high_shelf_db(buf, cutoff_hz=8000.0, db=3.0)
+low_shelf(buf, cutoff_hz=200.0, gain=0.8)
+low_shelf_db(buf, cutoff_hz=200.0, db=-2.0)
+allpass(buf, freq_hz=1000.0)
 ```
 
-#### DaisySP effects
+#### State-variable, ladder, and tone filters -- `nanodsp.effects.filters`
 
 ```python
-effects.autowah(buf, wah=0.5)
-effects.chorus(buf, rate=1.0, depth=0.5)
-effects.decimator(buf, downsample_factor=0.5, bitcrush_factor=0.5)
-effects.flanger(buf, rate=0.2, depth=0.5, feedback=0.5)
-effects.overdrive(buf, drive=0.7)
-effects.phaser(buf, rate=0.3, depth=0.5, feedback=0.5)
-effects.pitch_shift(buf, semitones=12.0)
-effects.sample_rate_reduce(buf, factor=0.5)
-effects.tremolo(buf, rate=5.0, depth=0.8)
-effects.wavefold(buf, gain=2.0)
-effects.bitcrush(buf, bits=8)
-effects.fold(buf, gain=2.0)
-effects.reverb_sc(buf, feedback=0.8, lpfreq=10000.0)
-effects.dc_block(buf)
+from nanodsp.effects.filters import (
+    svf_lowpass, svf_highpass, svf_bandpass, svf_notch, svf_peak,
+    ladder_filter, moog_ladder, tone_lowpass, tone_highpass,
+    modal_bandpass, comb_filter,
+)
+
+svf_lowpass(buf, freq_hz=1000.0, resonance=0.5)
+svf_highpass(buf, freq_hz=200.0, resonance=0.5)
+svf_bandpass(buf, freq_hz=1000.0, resonance=0.7)
+svf_notch(buf, freq_hz=1000.0, resonance=0.5)
+svf_peak(buf, freq_hz=1000.0, resonance=0.8)
+ladder_filter(buf, freq_hz=800.0, resonance=0.6, mode="lp24")
+moog_ladder(buf, freq_hz=1000.0, resonance=0.7)
+tone_lowpass(buf, freq_hz=2000.0)
+tone_highpass(buf, freq_hz=100.0)
+modal_bandpass(buf, freq_hz=440.0, q=50.0)
+comb_filter(buf, freq_hz=500.0, rev_time=0.5)
 ```
 
-#### DaisySP filters
+#### Virtual-analog filters -- `nanodsp.effects.filters`
 
 ```python
-effects.svf_lowpass(buf, freq=1000.0, res=0.5)
-effects.svf_highpass(buf, freq=200.0, res=0.5)
-effects.svf_bandpass(buf, freq=1000.0, res=0.7)
-effects.svf_notch(buf, freq=1000.0, res=0.5)
-effects.svf_peak(buf, freq=1000.0, res=0.8)
-effects.ladder_filter(buf, freq=800.0, res=0.6, mode="lp24")
-effects.moog_ladder(buf, freq=1000.0, res=0.7)
-effects.tone_lowpass(buf, freq=2000.0)
-effects.tone_highpass(buf, freq=100.0)
-effects.modal_bandpass(buf, freq=440.0, q=50.0)
-effects.comb_filter(buf, freq=500.0, revtime=0.5)
+from nanodsp.effects.filters import (
+    va_moog_ladder, va_moog_half_ladder, va_diode_ladder,
+    va_korg35_lpf, va_korg35_hpf, va_oberheim,
+)
+
+va_moog_ladder(buf, cutoff_hz=1000.0, q=1.0)
+va_diode_ladder(buf, cutoff_hz=1000.0, q=1.0)
+va_korg35_lpf(buf, cutoff_hz=1000.0, q=1.0)
+va_oberheim(buf, cutoff_hz=1000.0, q=1.0, mode="lpf")   # lpf, hpf, bpf, bsf
 ```
 
-#### Dynamics
+#### Multi-order IIR filters -- `nanodsp.effects.filters`
 
 ```python
-effects.compress(buf, threshold=-20.0, ratio=4.0, attack=0.01, release=0.1)
-effects.limit(buf, threshold=-1.0)
+from nanodsp.effects.filters import iir_filter, iir_design
+
+iir_filter(buf, family="butterworth", filter_type="lowpass", order=4, freq=1000.0)
+iir_filter(buf, family="chebyshev1", filter_type="highpass", order=6, freq=200.0, ripple_db=1.0)
+iir_filter(buf, family="elliptic", filter_type="bandpass", order=4, freq=1000.0, width=500.0)
+iir_filter(buf, family="bessel", filter_type="lowpass", order=8, freq=5000.0)
+
+# SOS coefficients without applying
+sos = iir_design("butterworth", "lowpass", order=4, sample_rate=44100, freq=1000.0)
 ```
 
-#### Composed effects
+#### Modulation and lo-fi effects -- `nanodsp.effects.daisysp`
 
 ```python
-effects.saturate(buf, drive=0.7, mode="soft")    # soft, hard, or tape
-effects.exciter(buf, freq=3000.0, drive=0.4)
-effects.de_esser(buf, freq=6000.0, threshold=-20.0)
-effects.parallel_compress(buf, mix=0.5, threshold=-24.0, ratio=8.0)
-effects.noise_gate(buf, threshold_db=-40.0)
-effects.stereo_delay(buf, delay_l=0.25, delay_r=0.375, feedback=0.4, ping_pong=True)
-effects.multiband_compress(buf, crossovers=[200.0, 2000.0, 8000.0])
-effects.ping_pong_delay(buf, delay_ms=375.0, feedback=0.5, mix=0.5)
-effects.freq_shift(buf, shift_hz=100.0)
-effects.ring_mod(buf, carrier_freq=300.0)
+from nanodsp.effects.daisysp import (
+    autowah, chorus, flanger, phaser, tremolo, overdrive,
+    wavefold, fold, bitcrush, decimator, sample_rate_reduce,
+    pitch_shift, reverb_sc, dc_block,
+)
+
+autowah(buf, wah=0.5)
+chorus(buf, lfo_freq=1.0, lfo_depth=0.5)
+flanger(buf, lfo_freq=0.2, lfo_depth=0.5, feedback=0.5)
+phaser(buf, lfo_freq=0.3, lfo_depth=0.5, feedback=0.5)
+tremolo(buf, freq=5.0, depth=0.8)
+overdrive(buf, drive=0.7)
+wavefold(buf, gain=2.0)
+fold(buf, increment=1.0)
+bitcrush(buf, bit_depth=8)
+decimator(buf, downsample_factor=0.5, bitcrush_factor=0.5)
+sample_rate_reduce(buf, freq=0.5)
+pitch_shift(buf, semitones=12.0)
+reverb_sc(buf, feedback=0.8, lp_freq=10000.0)
+dc_block(buf)
 ```
 
-#### Reverb
+#### Dynamics -- `nanodsp.effects.dynamics`
 
 ```python
-effects.reverb(buf, preset="hall", decay=2.0, mix=0.3)
-# Presets: room, hall, plate, chamber, cathedral
+from nanodsp.effects.dynamics import (
+    compress, limit, noise_gate, agc,
+    sidechain_compress, transient_shape, lookahead_limit,
+)
+
+compress(buf, threshold=-20.0, ratio=4.0, attack=0.01, release=0.1)
+limit(buf, pre_gain=2.0)
+noise_gate(buf, threshold_db=-40.0)
+agc(buf, target_level=1.0, max_gain_db=60.0)
+sidechain_compress(buf, sidechain, ratio=4.0, threshold=-20.0)   # sidechain is an AudioBuffer
+transient_shape(buf, attack_gain=1.5, sustain_gain=0.8)
+lookahead_limit(buf, threshold_db=-1.0, lookahead_ms=5.0)
 ```
 
-#### Mastering and vocal chains
+#### Saturation and antialiased waveshaping -- `nanodsp.effects.saturation`
 
 ```python
-effects.master(buf, target_lufs=-14.0)
-effects.vocal_chain(buf, de_ess_freq=6000.0, comp_threshold=-18.0)
+from nanodsp.effects.saturation import saturate, aa_hard_clip, aa_soft_clip, aa_wavefold
+
+saturate(buf, drive=0.7, mode="soft")    # soft, hard, tape
+aa_hard_clip(buf, drive=2.0)             # 1st-order antiderivative hard clip
+aa_soft_clip(buf, drive=2.0)             # 1st-order antiderivative soft clip
+aa_wavefold(buf, drive=2.0)              # 2nd-order Buchla-style wavefolder
 ```
 
-#### STK effects
+#### Reverb -- `nanodsp.effects.reverb`
 
 ```python
-effects.stk_reverb(buf, algorithm="freeverb", decay=1.5, mix=0.3)
-effects.stk_chorus(buf, mod_depth=0.02, mod_freq=1.0, mix=0.5)
-effects.stk_echo(buf, delay=0.25, max_delay=1.0, mix=0.5)
+from nanodsp.effects.reverb import (
+    reverb, schroeder_reverb, moorer_reverb, stk_reverb, stk_chorus, stk_echo,
+)
+
+reverb(buf, preset="hall", mix=0.3)                       # room, hall, plate, chamber, cathedral
+schroeder_reverb(buf, feedback=0.7, diffusion=0.5)
+moorer_reverb(buf, feedback=0.7, diffusion=0.7, mod_depth=0.1)
+stk_reverb(buf, algorithm="freeverb", t60=1.5, mix=0.3)   # freeverb, jcrev, nrev, prcrev
+stk_chorus(buf, mod_depth=0.02, mod_freq=1.0, mix=0.5)
+stk_echo(buf, delay_ms=250.0, mix=0.5)
 ```
 
-#### Automatic gain control
+#### Composed effects, delays, and mastering chains -- `nanodsp.effects.composed`
 
 ```python
-effects.agc(buf, target_level=1.0, max_gain_db=60.0, average_len=100, attack=0.01, release=0.01)
-```
+from nanodsp.effects.composed import (
+    exciter, de_esser, parallel_compress, multiband_compress,
+    stereo_delay, ping_pong_delay, tape_echo, freq_shift, ring_mod,
+    auto_pan, formant_filter, psola_pitch_shift,
+    gated_reverb, shimmer_reverb, lo_fi, telephone,
+    master, vocal_chain, vocoder,
+)
 
-#### Antialiased waveshaping (fxdsp)
+exciter(buf, freq=3000.0, amount=0.4)
+de_esser(buf, freq=6000.0, threshold_db=-20.0)
+parallel_compress(buf, mix=0.5, threshold_db=-24.0, ratio=8.0)
+multiband_compress(buf, crossover_freqs=[200.0, 2000.0, 8000.0])
+stereo_delay(buf, left_ms=250.0, right_ms=375.0, feedback=0.4, ping_pong=True)
+ping_pong_delay(buf, delay_ms=375.0, feedback=0.5, mix=0.5)
+tape_echo(buf, delay_ms=300.0, feedback=0.5, mix=0.5)
+freq_shift(buf, shift_hz=100.0)                  # Bode-style frequency shifting
+ring_mod(buf, carrier_freq=300.0, mix=1.0)
+auto_pan(buf, rate=2.0, depth=1.0)
+formant_filter(buf, vowel="a")                   # a, e, i, o, u
+psola_pitch_shift(buf, semitones=5.0)            # pitch-synchronous overlap-add
+gated_reverb(buf, preset="plate", gate_threshold_db=-30.0)
+shimmer_reverb(buf, mix=0.4, shift_semitones=12.0)
+lo_fi(buf, bit_depth=8, reduce=0.5, drive=0.3)
+telephone(buf, low_cut=300.0, high_cut=3400.0)
 
-```python
-effects.aa_hard_clip(buf, drive=2.0)       # 1st-order antiderivative hard clip
-effects.aa_soft_clip(buf, drive=2.0)       # 1st-order antiderivative soft clip
-effects.aa_wavefold(buf, drive=2.0)        # 2nd-order Buchla-style wavefolder
-```
+# Mastering and vocal chains
+master(buf, target_lufs=-14.0)
+vocal_chain(buf, de_ess_freq=6000.0)
 
-#### Classic reverbs (fxdsp)
-
-```python
-effects.schroeder_reverb(buf, feedback=0.7, diffusion=0.5, mod_depth=0.0)
-effects.moorer_reverb(buf, feedback=0.7, diffusion=0.7, mod_depth=0.1)
-```
-
-#### Formant filter and PSOLA pitch shifting (fxdsp)
-
-```python
-effects.formant_filter(buf, vowel="a")           # 'a','e','i','o','u'
-effects.psola_pitch_shift(buf, semitones=5.0)     # pitch-synchronous overlap-add
-```
-
-#### Ping-pong delay, frequency shifter, ring modulator (fxdsp)
-
-```python
-effects.ping_pong_delay(buf, delay_ms=375.0, feedback=0.5, mix=0.5)
-effects.freq_shift(buf, shift_hz=100.0)           # Bode-style frequency shifting
-effects.ring_mod(buf, carrier_freq=300.0, mix=1.0) # ring modulation
-```
-
-#### Multi-order IIR filters (DspFilters)
-
-```python
-effects.iir_filter(buf, family="butterworth", filter_type="lowpass", order=4, freq=1000.0)
-effects.iir_filter(buf, family="chebyshev1", filter_type="highpass", order=6, freq=200.0, ripple_db=1.0)
-effects.iir_filter(buf, family="elliptic", filter_type="bandpass", order=4, freq=1000.0, width=500.0)
-effects.iir_filter(buf, family="bessel", filter_type="lowpass", order=8, freq=5000.0)
-
-# Return SOS coefficients without applying
-sos = effects.iir_design("butterworth", "lowpass", order=4, sample_rate=44100, freq=1000.0)
+# Vocoder takes a modulator and a carrier (both AudioBuffers)
+vocoder(modulator, carrier, n_bands=16, freq_range=(80.0, 8000.0))
 ```
 
 ### `nanodsp.spectral` -- STFT and spectral processing
 
 Short-time Fourier transform, spectral utilities, and spectral transforms.
 
+Most utilities and transforms operate on a `Spectrogram` (the object returned by `stft`); a few that wrap the full analysis/synthesis round-trip take an `AudioBuffer` directly (`pitch_shift_spectral`, `eq_match`).
+
 ```python
 from nanodsp import spectral
 
-# STFT
+# STFT / inverse
 spec = spectral.stft(buf, window_size=2048, hop_size=512)
 buf = spectral.istft(spec)
 
-# Spectral utilities
+# Spectral utilities (operate on a Spectrogram)
 mag = spectral.magnitude(spec)
 ph = spectral.phase(spec)
-spec = spectral.from_polar(mag, ph)
+spec = spectral.from_polar(mag, ph, spec)               # spec supplies the geometry/metadata
 spec = spectral.apply_mask(spec, mask)
 spec = spectral.spectral_gate(spec, threshold_db=-40.0)
 spec = spectral.spectral_emphasis(spec, low_db=-3.0, high_db=3.0)
-freq = spectral.bin_freq(bin_index=10, fft_size=2048, sample_rate=44100)
-b = spectral.freq_to_bin(freq=1000.0, fft_size=2048, sample_rate=44100)
+freq = spectral.bin_freq(spec, bin_index=10)
+b = spectral.freq_to_bin(spec, freq_hz=1000.0)
 
-# Spectral transforms
-stretched = spectral.time_stretch(buf, rate=0.5)        # half speed
-locked = spectral.phase_lock(spec)                       # identity phase-locking
-frozen = spectral.spectral_freeze(buf, frame_index=10)   # frozen texture
-morphed = spectral.spectral_morph(spec_a, spec_b, x=0.5)
-shifted = spectral.pitch_shift_spectral(buf, semitones=5.0)
-denoised = spectral.spectral_denoise(buf, noise_frames=10)
+# Spectral transforms (Spectrogram -> Spectrogram unless noted)
+stretched = spectral.time_stretch(spec, rate=0.5)        # half speed; istft to render
+locked = spectral.phase_lock(spec)                        # phase-locking
+frozen = spectral.spectral_freeze(spec, frame_index=10)   # frozen texture
+morphed = spectral.spectral_morph(spec_a, spec_b, mix=0.5)
+shifted = spectral.pitch_shift_spectral(buf, semitones=5.0)   # takes/returns AudioBuffer
+denoised = spectral.spectral_denoise(spec, noise_frames=10)
 
-# EQ matching
-matched = spectral.eq_match(source_buf, target_buf, strength=1.0)
+# EQ matching (AudioBuffer -> AudioBuffer)
+matched = spectral.eq_match(source_buf, target_buf)
 ```
 
 ### `nanodsp.synthesis` -- Oscillators, noise, drums, physical modeling
@@ -465,10 +504,10 @@ Sound generators using DaisySP and STK backends.
 from nanodsp import synthesis
 
 # Oscillators
-synthesis.oscillator(freq=440.0, waveform="saw", frames=44100)
-synthesis.fm2(freq=440.0, ratio=2.0, index=1.0, frames=44100)
-synthesis.formant_oscillator(freq=440.0, formant_freq=800.0, frames=44100)
-synthesis.bl_oscillator(freq=440.0, waveform="saw", frames=44100)
+synthesis.oscillator(frames=44100, freq=440.0, waveform="saw")
+synthesis.fm2(frames=44100, freq=440.0, ratio=2.0, index=1.0)
+synthesis.formant_oscillator(frames=44100, carrier_freq=440.0, formant_freq=800.0)
+synthesis.bl_oscillator(frames=44100, freq=440.0, waveform="saw")
 
 # Noise
 synthesis.white_noise(frames=44100, amp=0.5)
@@ -483,21 +522,27 @@ synthesis.synthetic_bass_drum(freq=60.0, frames=44100)
 synthesis.synthetic_snare_drum(freq=200.0, frames=44100)
 
 # Physical modeling
-synthesis.karplus_strong(buf, freq=440.0, brightness=0.5, damping=0.5)
-synthesis.modal_voice(freq=440.0, frames=44100)
-synthesis.string_voice(freq=440.0, frames=44100)
-synthesis.pluck(freq=440.0, frames=44100)
-synthesis.drip(freq=1000.0, frames=44100)
+synthesis.karplus_strong(buf, freq_hz=440.0, brightness=0.5, damping=0.5)   # excites an AudioBuffer
+synthesis.modal_voice(frames=44100, freq=440.0)
+synthesis.string_voice(frames=44100, freq=440.0)
+synthesis.pluck(frames=44100, freq=440.0)
+synthesis.drip(frames=44100, dettack=0.01)
 
 # STK synthesis
-synthesis.synth_note("clarinet", freq=440.0, amplitude=0.8, duration=1.0)
+synthesis.synth_note("clarinet", freq=440.0, velocity=0.8, duration=1.0)
+# notes are (freq_hz, start_s, duration_s) tuples
 synthesis.synth_sequence("flute", notes=[
-    {"freq": 440.0, "amp": 0.8, "start": 0.0, "dur": 0.5},
-    {"freq": 554.37, "amp": 0.7, "start": 0.5, "dur": 0.5},
+    (440.0, 0.0, 0.5),
+    (554.37, 0.5, 0.5),
 ])
 
-# MinBLEP oscillators (fxdsp)
-synthesis.minblep(frames=44100, freq=440.0, waveform="saw")     # saw, rsaw, square, triangle
+# Band-limited oscillators (PolyBLEP et al.)
+synthesis.polyblep(frames=44100, freq=440.0, waveform="sawtooth")  # sawtooth, square, triangle
+synthesis.blit_saw(frames=44100, freq=220.0)
+synthesis.blit_square(frames=44100, freq=220.0)
+synthesis.dpw_saw(frames=44100, freq=440.0)
+synthesis.dpw_pulse(frames=44100, freq=440.0, duty=0.5)
+synthesis.minblep(frames=44100, freq=440.0, waveform="saw")        # saw, rsaw, square, triangle
 synthesis.minblep(frames=44100, freq=440.0, waveform="square", pulse_width=0.3)
 ```
 
@@ -510,6 +555,7 @@ from nanodsp import analysis
 
 # Loudness (ITU-R BS.1770-4)
 lufs = analysis.loudness_lufs(buf)
+dbtp = analysis.true_peak_dbtp(buf)                       # true-peak via 4x oversampling
 buf = analysis.normalize_lufs(buf, target_lufs=-14.0)
 
 # Spectral features
@@ -556,15 +602,15 @@ class MyProcessor(BlockProcessor):
 proc = MyProcessor(block_size=512)
 out = proc.process(buf)
 
-# Callback processor
-proc = CallbackProcessor(block_size=512, fn=lambda b: b * 0.5)
+# Callback processor (callback is the first argument)
+proc = CallbackProcessor(lambda b: b * 0.5, block_size=512)
 
-# Chain processors
-chain = ProcessorChain([proc1, proc2, proc3])
+# Chain processors (pass processors as positional args)
+chain = ProcessorChain(proc1, proc2, proc3)
 out = chain.process(buf)
 
-# Process with overlap-add
-out = process_blocks(buf, block_size=2048, hop_size=512, fn=my_spectral_fn)
+# Process with overlap-add (fn is the second argument)
+out = process_blocks(buf, my_spectral_fn, block_size=2048, hop_size=512)
 ```
 
 ### `nanodsp._core.grainflow` -- Granular synthesis (low-level)
@@ -652,7 +698,7 @@ Full type stubs are provided in `_core.pyi` for IDE autocompletion and type chec
 
 ```text
 nanodsp/
-  __init__.py          # package root (__version__ only)
+  __init__.py          # package root (exports AudioBuffer, __version__)
   __main__.py          # CLI entry point (argparse, subcommand handlers)
   _cli.py              # function/preset registries, fx parser, type coercion
   _core.cpython-*.so   # compiled C++ extension (nanobind)
@@ -661,7 +707,7 @@ nanodsp/
   buffer.py            # AudioBuffer class
   io.py                # audio file I/O (WAV + FLAC)
   ops.py               # delay, envelopes, FFT, convolution, rates, mix, pan, xcorr, hilbert, median, LMS
-  effects.py           # filters, effects, dynamics, reverb, mastering, AGC
+  effects/             # filters, daisysp, dynamics, saturation, reverb, composed
   spectral.py          # STFT, spectral transforms, eq_match
   synthesis.py         # oscillators, noise, drums, physical modeling
   analysis.py          # loudness, spectral features, pitch, onsets, resample, gcc_phat
