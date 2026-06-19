@@ -1648,10 +1648,18 @@
 <h1 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h1>
 <h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Python &gt;= 3.10</li>
-<li>numpy</li>
-<li>C++17 compiler (for building from source)</li>
-<li>CMake &gt;= 3.15 (for building from source)</li>
+<li>
+<p>Python &gt;= 3.10</p>
+</li>
+<li>
+<p>numpy</p>
+</li>
+<li>
+<p>C++17 compiler (for building from source)</p>
+</li>
+<li>
+<p>CMake &gt;= 3.15 (for building from source)</p>
+</li>
 </ul>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
 <h3 id="from-pypi">From PyPI<a class="headerlink" href="#from-pypi" title="Permanent link">&para;</a></h3>
@@ -1667,7 +1675,7 @@
 <p>Use <code>make help</code> for additional targets (build, test, lint, format, typecheck, qa, coverage, etc.).</p>
 <h2 id="basic-usage">Basic usage<a class="headerlink" href="#basic-usage" title="Permanent link">&para;</a></h2>
 <h3 id="loading-audio">Loading audio<a class="headerlink" href="#loading-audio" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp.buffer</span><span class="w"> </span><span class="kn">import</span> <span class="n">AudioBuffer</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp</span><span class="w"> </span><span class="kn">import</span> <span class="n">AudioBuffer</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># From file</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">buf</span> <span class="o">=</span> <span class="n">AudioBuffer</span><span class="o">.</span><span class="n">from_file</span><span class="p">(</span><span class="s2">&quot;input.wav&quot;</span><span class="p">)</span>
@@ -1717,10 +1725,18 @@
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
 <p>All DSP functions accept and return <code>AudioBuffer</code> objects. The processing pipeline is:</p>
 <ol>
-<li><strong>AudioBuffer</strong> wraps a 2D float32 numpy array <code>[channels, frames]</code> with metadata</li>
-<li><strong>Python functions</strong> validate parameters and delegate to C++ bindings</li>
-<li><strong>C++ layer</strong> processes audio with GIL released for thread safety</li>
-<li><strong>Result</strong> is returned as a new AudioBuffer (functions are non-mutating)</li>
+<li>
+<p><strong>AudioBuffer</strong> wraps a 2D float32 numpy array <code>[channels, frames]</code> with metadata</p>
+</li>
+<li>
+<p><strong>Python functions</strong> validate parameters and delegate to C++ bindings</p>
+</li>
+<li>
+<p><strong>C++ layer</strong> processes audio with GIL released for thread safety</p>
+</li>
+<li>
+<p><strong>Result</strong> is returned as a new AudioBuffer (functions are non-mutating)</p>
+</li>
 </ol>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>AudioBuffer --&gt; Python API --&gt; C++ bindings --&gt; AudioBuffer
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>                  |                |

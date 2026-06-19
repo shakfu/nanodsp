@@ -1469,14 +1469,24 @@
 <p>High-performance Python DSP toolkit built on C++ libraries via <a href="https://github.com/wjakob/nanobind">nanobind</a>. All processing uses float32 in a planar <code>[channels, frames]</code> layout with block-based APIs that accept and return <code>AudioBuffer</code> objects.</p>
 <h2 id="features">Features<a class="headerlink" href="#features" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>190+ DSP functions</strong> -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing, granular synthesis</li>
-<li><strong>11 C++ backends</strong> -- signalsmith, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP</li>
-<li><strong>Zero-copy where possible</strong> -- numpy arrays pass directly to C++ with GIL release for true multi-threaded parallelism</li>
-<li><strong>CLI included</strong> -- process, analyze, synthesize, convert, and benchmark audio from the command line</li>
-<li><strong>30 built-in presets</strong> -- mastering, voice, spatial, dynamics, creative, lo-fi, cleanup</li>
+<li>
+<p><strong>190+ DSP functions</strong> -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing, granular synthesis</p>
+</li>
+<li>
+<p><strong>11 C++ backends</strong> -- signalsmith, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP</p>
+</li>
+<li>
+<p><strong>Zero-copy where possible</strong> -- numpy arrays pass directly to C++ with GIL release for true multi-threaded parallelism</p>
+</li>
+<li>
+<p><strong>CLI included</strong> -- process, analyze, synthesize, convert, and benchmark audio from the command line</p>
+</li>
+<li>
+<p><strong>30 built-in presets</strong> -- mastering, voice, spatial, dynamics, creative, lo-fi, cleanup</p>
+</li>
 </ul>
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp.buffer</span><span class="w"> </span><span class="kn">import</span> <span class="n">AudioBuffer</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp</span><span class="w"> </span><span class="kn">import</span> <span class="n">AudioBuffer</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp.effects</span><span class="w"> </span><span class="kn">import</span> <span class="n">filters</span><span class="p">,</span> <span class="n">dynamics</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp</span><span class="w"> </span><span class="kn">import</span> <span class="n">analysis</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
