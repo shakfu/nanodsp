@@ -15,4 +15,5 @@ NB_MODULE(_core, m) {
     bind_bloscillators(m);
     bind_fxdsp(m);
     bind_iirdesign(m);
+    bind_paulstretch(m);
 }

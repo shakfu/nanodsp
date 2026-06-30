@@ -27,3 +27,7 @@ All libraries are vendored directly into the `thirdparty/` directory (no git sub
 - **signalsmith**: Copyright 2021 Geraint Luff / Signalsmith Audio Ltd. Version definitively 1.7.0 via `SIGNALSMITH_DSP_VERSION_STRING`.
 - **stk**: Copyright 1995-2023 Perry R. Cook and Gary P. Scavone. Development snapshot from the 5.0.0 branch. Version strings are inconsistent across source files (`configure.ac` = 5.0.0, `STK.podspec` = 4.6.2, `CMakeLists.txt` = 4.6.1) because the vendored copy was taken between tagged releases. The `configure.ac` value (5.0.0) is authoritative as it is the autotools primary version source.
 - **vafilters**: Faust-generated VA filter implementations by Eric Tarr / Christopher Arndt, cleaned for nanodsp. Includes PolyBLEP oscillator based on Kleimola et al. (SMC 2010).
+
+## Not vendored
+
+- **PaulStretch** (`src/nanodsp/_core_paulstretch.cpp`): the extreme time-stretch backend is an *original* implementation of the PaulStretch algorithm by Nasca Octavian Paul, which the author placed in the public domain. It is built on the vendored signalsmith RealFFT and does **not** include any source from the GPLv3 [paulxstretch](https://github.com/essej/paulxstretch) application -- that code is incompatible with this project's MIT license. Only the public-domain algorithm is reproduced.

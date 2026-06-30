@@ -4,7 +4,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 
 ## Features
 
-- **190+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing, granular synthesis
+- **190+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing, time-stretching, granular synthesis
 
 - **11 C++ backends** -- signalsmith, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP
 

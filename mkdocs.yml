@@ -72,6 +72,7 @@ nav:
     - Reverb: guide/reverb.md
     - Modulation: guide/modulation.md
     - Spectral: guide/spectral.md
+    - Time-stretching: guide/timestretch.md
     - Synthesis: guide/synthesis.md
     - Analysis: guide/analysis.md
     - Composed Effects: guide/composed.md
@@ -92,6 +93,7 @@ nav:
       - Reverb: api/effects/reverb.md
       - Composed: api/effects/composed.md
     - Spectral: api/spectral.md
+    - Time-stretching: api/timestretch.md
     - Synthesis: api/synthesis.md
     - Analysis: api/analysis.md
     - Streaming: api/stream.md

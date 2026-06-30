@@ -124,6 +124,7 @@ demos:
 	@uv run python demos/demo_grainflow.py $(DEMO_INPUT)
 	@uv run python demos/demo_fxdsp.py $(DEMO_INPUT)
 	@uv run python demos/demo_iir_filters.py $(DEMO_INPUT)
+	@uv run python demos/demo_paulstretch.py $(DEMO_INPUT)
 
 # Clean build artifacts
 clean:

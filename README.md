@@ -62,6 +62,10 @@ nanodsp process input.wav -o output.wav \
 nanodsp process vocals.wav -o out.wav -p vocal_chain
 nanodsp process input.wav -o out.wav -f lowpass:cutoff_hz=12000 -p master
 
+# PaulStretch extreme time-stretch (8x longer, smeared pad texture)
+nanodsp process input.wav -o out.wav -f paulstretch:stretch=8
+nanodsp process input.wav -o out.wav -f paulstretch:stretch=20,pitch_semitones=12,onset=0.5
+
 # Batch mode -- process multiple files to a directory
 nanodsp process *.wav -O out/ -f lowpass:cutoff_hz=2000
 
@@ -526,6 +530,27 @@ denoised = spectral.spectral_denoise(spec, noise_frames=10)
 matched = spectral.eq_match(source_buf, target_buf)
 ```
 
+### `nanodsp.timestretch` -- PaulStretch extreme time-stretching
+
+The PaulStretch algorithm (by Nasca Octavian Paul, public domain) for extreme time-stretching via phase-randomized spectral resynthesis. It produces the smeared, ambient, pad-like textures PaulStretch is known for and is intended for large stretch factors where a phase-vocoder (`spectral.time_stretch`) breaks down. This is an original implementation built on the signalsmith FFT; it does not use the GPLv3 [paulxstretch](https://github.com/essej/paulxstretch) application sources.
+
+```python
+from nanodsp.timestretch import paulstretch
+
+# Core extreme stretch -- 8x longer, pitch preserved
+out = paulstretch(buf, stretch=8.0)
+
+# Larger window -> smoother/more diffuse; transient preservation for attacks
+out = paulstretch(buf, stretch=20.0, window_size=8192, onset=0.5)
+
+# Spectral effects applied during resynthesis
+out = paulstretch(buf, stretch=8.0, pitch_semitones=12.0)   # up one octave
+out = paulstretch(buf, stretch=8.0, harmonics=3, spread=8.0) # thicker, more diffuse
+out = paulstretch(buf, stretch=8.0, highpass_hz=500.0, lowpass_hz=6000.0)
+```
+
+Output length is approximately `frames * stretch`; all channels share the same length, and stereo material is decorrelated (per-channel seeds) for a wider image. Output is reproducible for a given `seed`. Also available as the CLI filter `paulstretch:stretch=...`.
+
 ### `nanodsp.synthesis` -- Oscillators, noise, drums, physical modeling
 
 Sound generators using DaisySP and STK backends.
@@ -851,6 +876,7 @@ uv run python demos/demo_analysis.py demos/s01.wav   # prints to stdout
 | `demo_grainflow.py` | 7 | Granular clouds (basic, dense), pitch shift, sparse stochastic, stereo panning, recorder |
 | `demo_fxdsp.py` | 38 | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators, ping-pong delay, frequency shifter, ring modulator |
 | `demo_iir_filters.py` | 23 | Butterworth, Chebyshev I/II, Elliptic, Bessel filters at various orders |
+| `demo_paulstretch.py` | 11 | PaulStretch extreme time-stretch: stretch factors, window size, transient preservation, octave shift, harmonics/spread, spectral band-pass, long drone |
 
 File-processing scripts share the same interface:
 

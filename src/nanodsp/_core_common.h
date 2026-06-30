@@ -98,3 +98,4 @@ void bind_vafilters(nb::module_ &m);
 void bind_bloscillators(nb::module_ &m);
 void bind_fxdsp(nb::module_ &m);
 void bind_iirdesign(nb::module_ &m);
+void bind_paulstretch(nb::module_ &m);

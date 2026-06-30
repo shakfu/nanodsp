@@ -9,7 +9,7 @@ import types
 from pathlib import Path
 from typing import Any
 
-from nanodsp import ops, spectral, analysis, synthesis
+from nanodsp import ops, spectral, analysis, synthesis, timestretch
 from nanodsp.effects import filters, daisysp, dynamics, saturation, reverb, composed
 
 
@@ -111,6 +111,7 @@ def _build_registry() -> None:
         _register(mod, "effects")
     _register(ops, "ops")
     _register(spectral, "spectral")
+    _register(timestretch, "spectral", include={"paulstretch"})
     _register(analysis, "analysis")
     _register(synthesis, "synthesis")
 

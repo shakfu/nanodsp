@@ -9,6 +9,7 @@ nanodsp is organized into modules that accept and return [`AudioBuffer`](buffer.
 | [`nanodsp.ops`](ops.md) | Core DSP operations (delay, FFT, convolution, mixing, panning) |
 | [`nanodsp.effects`](effects/index.md) | Filters, effects, dynamics, reverb, mastering |
 | [`nanodsp.spectral`](spectral.md) | STFT, spectral transforms, EQ matching |
+| [`nanodsp.timestretch`](timestretch.md) | PaulStretch extreme time-stretching |
 | [`nanodsp.synthesis`](synthesis.md) | Oscillators, noise, drums, physical modeling |
 | [`nanodsp.analysis`](analysis.md) | Loudness, spectral features, pitch, onsets, resampling |
 | [`nanodsp.stream`](stream.md) | Ring buffers, block processors, streaming |

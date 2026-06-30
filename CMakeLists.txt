@@ -23,8 +23,11 @@ if(MSVC)
     target_compile_options(DaisySP PRIVATE /w /FI"${MSVC_COMPAT}")
     target_compile_options(DaisySP_LGPL PRIVATE /w)
 else()
-    target_compile_options(DaisySP PRIVATE -w)
-    target_compile_options(DaisySP_LGPL PRIVATE -w)
+    # Vendored DaisySP uses unqualified `size_t`; force-include a shim that
+    # brings it into the global namespace for newer libc++/SDK toolchains.
+    set(DAISY_COMPAT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/daisysp_compat.h")
+    target_compile_options(DaisySP PRIVATE -w -include "${DAISY_COMPAT}")
+    target_compile_options(DaisySP_LGPL PRIVATE -w -include "${DAISY_COMPAT}")
 endif()
 
 # Madronalib DSP (header-only, MIT)
@@ -190,6 +193,7 @@ nanobind_add_module(_core
     src/nanodsp/_core_bloscillators.cpp
     src/nanodsp/_core_fxdsp.cpp
     src/nanodsp/_core_iirdesign.cpp
+    src/nanodsp/_core_paulstretch.cpp
 )
 target_link_libraries(_core PRIVATE signalsmith-dsp DaisySP DaisySP_LGPL stk_subset madronalib-dsp hisstools grainflow-dsp vafilters-dsp fxdsp dspfilters)
 target_include_directories(_core SYSTEM PRIVATE thirdparty/choc)

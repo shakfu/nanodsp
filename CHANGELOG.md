@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **PaulStretch extreme time-stretching** (`nanodsp.timestretch.paulstretch`, CLI filter `paulstretch`) -- the PaulStretch algorithm (by Nasca Octavian Paul, public domain) for extreme time-stretching via phase-randomized spectral resynthesis, producing the smeared, pad-like textures it is known for at large stretch factors where a phase-vocoder breaks down. Implemented as a new C++ backend (`paulstretch.PaulStretch`) on the signalsmith RealFFT; it is an original implementation and does not vendor the GPLv3 paulxstretch application sources. Supports onset/transient preservation and spectral effects (pitch/octave shift, added harmonics, spectral spread, and spectral band-pass filtering). Phase randomization is seeded for reproducible output, and stereo channels are decorrelated for a wider image.
+
+- **PaulStretch demo** (`demos/demo_paulstretch.py`, wired into `make demos`) -- renders 11 examples covering stretch factors, window size, transient preservation, octave shift, harmonics/spread, spectral band-pass, and a long drone. A `--source-seconds` flag trims the source so large stretch factors stay reasonably sized.
+
+### Fixed
+
+- **Clean rebuilds on newer toolchains** -- vendored DaisySP sources use unqualified `size_t`, which recent libc++/SDK versions (e.g. current Xcode) no longer leak into the global namespace, breaking a full `make build`. A force-included compat shim (`cmake/daisysp_compat.h`) now restores it for the DaisySP targets without editing the vendored sources, mirroring the existing `msvc_compat.h` / `hisstools_arch_compat.h` shims.
+
 ## [0.1.7]
 
 ### Added
