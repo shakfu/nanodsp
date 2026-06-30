@@ -6,7 +6,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 
 - **190+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing, time-stretching, granular synthesis
 
-- **11 C++ backends** -- signalsmith, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP
+- **12 C++ backends** -- signalsmith, signalsmith-stretch, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP
 
 - **Zero-copy where possible** -- numpy arrays pass directly to C++ with GIL release for true multi-threaded parallelism
 

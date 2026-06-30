@@ -5,13 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.8]
 
 ### Added
 
 - **PaulStretch extreme time-stretching** (`nanodsp.timestretch.paulstretch`, CLI filter `paulstretch`) -- the PaulStretch algorithm (by Nasca Octavian Paul, public domain) for extreme time-stretching via phase-randomized spectral resynthesis, producing the smeared, pad-like textures it is known for at large stretch factors where a phase-vocoder breaks down. Implemented as a new C++ backend (`paulstretch.PaulStretch`) on the signalsmith RealFFT; it is an original implementation and does not vendor the GPLv3 paulxstretch application sources. Supports onset/transient preservation and spectral effects (pitch/octave shift, added harmonics, spectral spread, and spectral band-pass filtering). Phase randomization is seeded for reproducible output, and stereo channels are decorrelated for a wider image.
 
 - **PaulStretch demo** (`demos/demo_paulstretch.py`, wired into `make demos`) -- renders 11 examples covering stretch factors, window size, transient preservation, octave shift, harmonics/spread, spectral band-pass, and a long drone. A `--source-seconds` flag trims the source so large stretch factors stay reasonably sized.
+
+- **Signalsmith time-stretching / pitch-shifting** (`nanodsp.timestretch.signalsmith_stretch`, CLI filter `signalsmith_stretch`) -- the MIT-licensed [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) library (Geraint Luff / Signalsmith Audio), a transient-aware, phase-vocoder-derived stretcher that stays musical at modest ratios and decouples time-stretch from pitch-shift. Implemented as a new C++ backend (`signalsmith_stretch.SignalsmithStretch`) driving the library's offline whole-buffer pattern (seek/process/flush with pre-roll fold-back) for an exact-length, latency-trimmed result; all channels are processed together so the stereo image stays coherent. Exposes independent pitch-shift in semitones, a tonality limit for preserving high-frequency timbre on large shifts, a lower-CPU "cheaper" preset, and a seed for reproducible output. Vendored at release 1.1.1 on top of the already-vendored signalsmith-dsp -- no new FFT library is needed (newer upstream releases depend on the separate signalsmith-linear library, which is not vendored).
+
+- **Signalsmith stretch demo** (`demos/demo_signalsmith_stretch.py`, wired into `make demos`) -- renders 15 examples covering time-stretch factors, pure pitch-shifts (octave up/down, fifth, fine detune), a tonality-limited shift, combined stretch-plus-pitch ("monster"/"chipmunk"), the cheaper preset, and an extreme-factor comparison of signalsmith vs PaulStretch on the same source.
 
 ### Fixed
 

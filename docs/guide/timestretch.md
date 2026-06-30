@@ -1,4 +1,8 @@
-# Time-stretching (PaulStretch)
+# Time-stretching and pitch-shifting
+
+The `timestretch` module has two backends for changing duration and pitch: **PaulStretch** for extreme, textural stretches, and **Signalsmith stretch** for clean, musical stretching and independent pitch-shifting. See [When to use which stretcher](#when-to-use-which-stretcher) at the end for picking between these and the [Spectral](spectral.md) phase vocoder.
+
+## PaulStretch
 
 PaulStretch is an *extreme* time-stretching technique by Nasca Octavian Paul (public domain). Where the phase vocoder in [Spectral](spectral.md) (`spectral.time_stretch`) is built to change duration by modest ratios while keeping a signal recognizable, PaulStretch is built for very large factors -- 8x, 20x, 50x -- where the result is intentionally smeared into ambient, pad-like textures rather than a faithful slow-down.
 
@@ -74,19 +78,65 @@ drone = paulstretch(
 )
 ```
 
+## Signalsmith stretch
+
+`signalsmith_stretch` wraps the MIT-licensed [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) library (Geraint Luff / Signalsmith Audio), a transient-aware, phase-vocoder-derived algorithm. Where PaulStretch *intentionally* smears the signal, this aims to keep it recognizable and musical -- a clean slow-down or speed-up -- and it treats **pitch and duration as independent controls**. All channels are processed together so a stereo image stays coherent.
+
+```python
+from nanodsp.timestretch import signalsmith_stretch
+
+# Time-stretch, pitch preserved
+slower = signalsmith_stretch(buf, stretch=2.0)    # 2x longer
+faster = signalsmith_stretch(buf, stretch=0.75)   # shorter
+```
+
+### Pitch-shifting
+
+`semitones` shifts pitch independently of `stretch`, so `stretch=1.0` gives a pure pitch-shift with the duration unchanged.
+
+```python
+up = signalsmith_stretch(buf, stretch=1.0, semitones=12.0)   # up one octave
+down = signalsmith_stretch(buf, stretch=1.0, semitones=-7.0)  # down a perfect fifth
+
+# Decoupled: change both at once
+both = signalsmith_stretch(buf, stretch=1.5, semitones=5.0)
+```
+
+### Tonality limit
+
+Large pitch shifts move the whole spectrum, which can sound thin (up) or dark (down). The `tonality_hz` limit rolls the shift back toward the original above that frequency, keeping the high-end timbre and "air" more natural -- around 8000 Hz is a common choice for voice.
+
+```python
+out = signalsmith_stretch(buf, stretch=1.0, semitones=7.0, tonality_hz=8000.0)
+```
+
+### Cheaper preset and seed
+
+```python
+# Lower-CPU preset (slightly lower quality)
+out = signalsmith_stretch(buf, stretch=2.0, cheaper=True)
+
+# Past ~2x the algorithm randomizes phase; `seed` makes that reproducible
+out = signalsmith_stretch(buf, stretch=3.0, seed=42)
+```
+
 ## CLI
 
-The same effect is available as the `paulstretch` filter in the [CLI](../cli.md):
+Both effects are available as filters in the [CLI](../cli.md):
 
 ```bash
 nanodsp process input.wav -o out.wav -f paulstretch:stretch=8
 nanodsp process input.wav -o out.wav -f paulstretch:stretch=20,pitch_semitones=12,onset=0.5
+
+nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=2
+nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=1,semitones=-5,tonality_hz=8000
 ```
 
 ## When to use which stretcher
 
-| | `spectral.time_stretch` (phase vocoder) | `timestretch.paulstretch` |
-|---|---|---|
-| Best for | Modest ratios, keeping the signal recognizable | Extreme ratios, ambient/textural results |
-| Character | Faithful slow-down/speed-up | Smeared, diffuse, pad-like |
-| Typical range | ~0.5x--2x | ~4x--50x+ |
+| | `spectral.time_stretch` (phase vocoder) | `timestretch.signalsmith_stretch` | `timestretch.paulstretch` |
+|---|---|---|---|
+| Best for | Modest ratios, keeping the signal recognizable | Clean stretch + independent pitch-shift | Extreme ratios, ambient/textural results |
+| Character | Faithful slow-down/speed-up | Musical, transient-aware | Smeared, diffuse, pad-like |
+| Pitch control | Separate pitch-shift | Built-in, decoupled from stretch | Spectral shift (formants move) |
+| Typical range | ~0.5x--2x | ~0.5x--4x | ~4x--50x+ |

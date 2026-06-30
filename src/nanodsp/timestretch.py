@@ -1,9 +1,15 @@
-"""Time-stretching effects.
+"""Time-stretching and pitch-shifting effects.
 
-PaulStretch extreme time-stretching via phase-randomized spectral resynthesis.
-The algorithm is by Nasca Octavian Paul (public domain); this is an original
-implementation on top of the signalsmith RealFFT and does not use the GPLv3
-paulxstretch application sources.
+Two complementary backends:
+
+- :func:`paulstretch` -- PaulStretch *extreme* time-stretching via
+  phase-randomized spectral resynthesis (Nasca Octavian Paul, public domain;
+  an original implementation on the signalsmith RealFFT, not the GPLv3
+  paulxstretch sources). Built for very large factors and ambient textures.
+- :func:`signalsmith_stretch` -- the MIT-licensed signalsmith-stretch library
+  (Geraint Luff / Signalsmith Audio), a transient-aware, phase-vocoder-derived
+  stretcher with independent pitch-shifting. Built to stay musical at modest
+  ratios.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ import numpy as np
 
 from nanodsp.buffer import AudioBuffer
 from nanodsp._core import paulstretch as _ps
+from nanodsp._core import signalsmith_stretch as _ss
 
 
 def paulstretch(
@@ -100,6 +107,77 @@ def paulstretch(
         channels.append(proc.process(buf.ensure_1d(ch), float(stretch)))
 
     out = np.stack(channels) if len(channels) > 1 else channels[0].reshape(1, -1)
+    return AudioBuffer(
+        out,
+        sample_rate=buf.sample_rate,
+        channel_layout=buf.channel_layout,
+        label=buf.label,
+    )
+
+
+def signalsmith_stretch(
+    buf: AudioBuffer,
+    stretch: float = 1.0,
+    semitones: float = 0.0,
+    tonality_hz: float = 0.0,
+    cheaper: bool = False,
+    seed: int = 0,
+) -> AudioBuffer:
+    """High-quality time-stretch and pitch-shift (signalsmith-stretch).
+
+    Changes duration and/or pitch using the MIT-licensed signalsmith-stretch
+    library, a transient-aware phase-vocoder-derived algorithm. Unlike
+    :func:`paulstretch`, time-stretch and pitch-shift are decoupled and the
+    result stays musical at modest ratios rather than smearing into a texture.
+    All channels are processed together in a single pass, keeping a stereo
+    image coherent.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    stretch : float
+        Time-stretch factor, must be > 0. Values > 1 lengthen the audio,
+        values < 1 shorten it, and 1.0 (default) leaves duration unchanged --
+        useful for pure pitch-shifting. Typical: 0.5--4.
+    semitones : float
+        Pitch shift in semitones, independent of ``stretch`` (+12 = up one
+        octave, -12 = down). Fractional values are allowed. 0 (default) leaves
+        pitch unchanged.
+    tonality_hz : float
+        Tonality limit in Hz (<= 0 disables). Above this frequency the pitch
+        shift is rolled back toward the original signal, which preserves
+        high-frequency timbre/"air" on large shifts. A common choice is around
+        8000 Hz for voice.
+    cheaper : bool
+        Use the lower-CPU preset (slightly lower quality) instead of the
+        default preset.
+    seed : int
+        Seed for the internal phase randomization (engaged past ~2x stretch).
+        Output is reproducible for a given seed.
+
+    Returns
+    -------
+    AudioBuffer
+        Processed audio. Length is approximately ``frames * stretch``; all
+        channels share the same length. Sample rate and channel layout are
+        preserved.
+
+    Raises
+    ------
+    ValueError
+        If ``stretch`` is not positive.
+    """
+    if stretch <= 0:
+        raise ValueError(f"stretch must be positive, got {stretch}")
+
+    proc = _ss.SignalsmithStretch(
+        int(buf.channels), float(buf.sample_rate), bool(cheaper), int(seed)
+    )
+    proc.transpose_semitones = float(semitones)
+    proc.tonality_hz = float(tonality_hz)
+
+    out = proc.process(buf.data, float(stretch))
     return AudioBuffer(
         out,
         sample_rate=buf.sample_rate,

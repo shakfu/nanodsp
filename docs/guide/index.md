@@ -10,7 +10,7 @@ A hands-on guide to the signal processing algorithms in nanodsp, organized by ca
 | [Reverb](reverb.md) | FDN, Schroeder, Moorer, STK, ReverbSc |
 | [Modulation](modulation.md) | Chorus, flanger, phaser, tremolo, autowah |
 | [Spectral](spectral.md) | STFT, time stretch, pitch shift, denoise, EQ match |
-| [Time-stretching](timestretch.md) | PaulStretch extreme time-stretching, spectral effects |
+| [Time-stretching](timestretch.md) | PaulStretch textures, Signalsmith stretch / pitch-shift |
 | [Synthesis](synthesis.md) | Oscillators, FM, noise, drums, physical modeling, STK |
 | [Analysis](analysis.md) | Loudness, spectral features, pitch, onsets, resampling |
 | [Composed Effects](composed.md) | Mastering chains, creative effects, delay networks |

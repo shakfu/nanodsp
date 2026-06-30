@@ -12,6 +12,7 @@ All libraries are vendored directly into the `thirdparty/` directory (no git sub
 | HISSTools_Library | unversioned | BSD 3-Clause | https://github.com/AlexHarker/HISSTools_Library |
 | madronalib | 0.1.0 (CMakeLists.txt) | MIT | https://github.com/madronalabs/madronalib |
 | signalsmith | 1.7.0 (header macro) | MIT | https://signalsmith-audio.co.uk/code/dsp/ |
+| signalsmith-stretch | 1.1.1 (release tag) | MIT | https://github.com/Signalsmith-Audio/signalsmith-stretch |
 | stk (STK) | ~5.0.0-dev (see notes) | MIT | https://github.com/thestk/stk |
 | vafilters | unversioned (Faust-generated) | MIT-style STK-4.3 | local / derived from Faust DSP |
 
@@ -25,6 +26,7 @@ All libraries are vendored directly into the `thirdparty/` directory (no git sub
 - **HISSTools_Library**: Copyright 2019 Alex Harker. No version numbering found.
 - **madronalib**: Copyright 2025 Madrona Labs LLC. Version 0.1.0 per CMakeLists.txt variables.
 - **signalsmith**: Copyright 2021 Geraint Luff / Signalsmith Audio Ltd. Version definitively 1.7.0 via `SIGNALSMITH_DSP_VERSION_STRING`.
+- **signalsmith-stretch**: Copyright 2022 Geraint Luff / Signalsmith Audio Ltd. Vendored at release tag 1.1.1 (`version[3] = {1, 1, 1}` in the header), the last release that builds on the signalsmith DSP library; newer releases depend on the separate `signalsmith-linear` FFT library, which is not vendored here. The upstream `signalsmith-stretch.h` is unmodified -- its `dsp/...` includes resolve through forwarding shims in `signalsmith-stretch/dsp/` to the vendored signalsmith-dsp (1.7.0 >= the required 1.6.0).
 - **stk**: Copyright 1995-2023 Perry R. Cook and Gary P. Scavone. Development snapshot from the 5.0.0 branch. Version strings are inconsistent across source files (`configure.ac` = 5.0.0, `STK.podspec` = 4.6.2, `CMakeLists.txt` = 4.6.1) because the vendored copy was taken between tagged releases. The `configure.ac` value (5.0.0) is authoritative as it is the autotools primary version source.
 - **vafilters**: Faust-generated VA filter implementations by Eric Tarr / Christopher Arndt, cleaned for nanodsp. Includes PolyBLEP oscillator based on Kleimola et al. (SMC 2010).
 

@@ -2618,3 +2618,25 @@ class paulstretch:
         def process(
             self, input: NDArray[np.float32], stretch: float
         ) -> NDArray[np.float32]: ...
+
+class signalsmith_stretch:
+    class SignalsmithStretch:
+        def __init__(
+            self,
+            channels: int,
+            sample_rate: float,
+            cheaper: bool = False,
+            seed: int = 0,
+        ) -> None: ...
+        @property
+        def channels(self) -> int: ...
+        @property
+        def sample_rate(self) -> float: ...
+        @property
+        def cheaper(self) -> bool: ...
+        transpose_semitones: float
+        tonality_hz: float
+        def set_seed(self, seed: int) -> None: ...
+        def process(
+            self, input: NDArray[np.float32], stretch: float
+        ) -> NDArray[np.float32]: ...

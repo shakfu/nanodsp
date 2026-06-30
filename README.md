@@ -7,6 +7,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 | Library | License | What it provides |
 |---------|---------|------------------|
 | [signalsmith-dsp](https://signalsmith-audio.co.uk/code/dsp/) | MIT | Filters, FFT, delay, envelopes, spectral processing, rates, mix |
+| [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | MIT | High-quality time-stretching and pitch-shifting |
 | [DaisySP](https://github.com/electro-smith/DaisySP) | MIT | Oscillators, effects, dynamics, drums, physical modeling, noise |
 | [STK](https://github.com/thestk/stk) | MIT | Physical modeling instruments, generators, filters, delays, effects |
 | [madronalib](https://github.com/madronalabs/madronalib) | MIT | FDN reverbs, resampling, generators, projections, windows |
@@ -65,6 +66,10 @@ nanodsp process input.wav -o out.wav -f lowpass:cutoff_hz=12000 -p master
 # PaulStretch extreme time-stretch (8x longer, smeared pad texture)
 nanodsp process input.wav -o out.wav -f paulstretch:stretch=8
 nanodsp process input.wav -o out.wav -f paulstretch:stretch=20,pitch_semitones=12,onset=0.5
+
+# Signalsmith high-quality stretch / pitch-shift (musical at modest ratios)
+nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=2
+nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=1,semitones=-5,tonality_hz=8000
 
 # Batch mode -- process multiple files to a directory
 nanodsp process *.wav -O out/ -f lowpass:cutoff_hz=2000
@@ -530,9 +535,11 @@ denoised = spectral.spectral_denoise(spec, noise_frames=10)
 matched = spectral.eq_match(source_buf, target_buf)
 ```
 
-### `nanodsp.timestretch` -- PaulStretch extreme time-stretching
+### `nanodsp.timestretch` -- Time-stretching and pitch-shifting
 
-The PaulStretch algorithm (by Nasca Octavian Paul, public domain) for extreme time-stretching via phase-randomized spectral resynthesis. It produces the smeared, ambient, pad-like textures PaulStretch is known for and is intended for large stretch factors where a phase-vocoder (`spectral.time_stretch`) breaks down. This is an original implementation built on the signalsmith FFT; it does not use the GPLv3 [paulxstretch](https://github.com/essej/paulxstretch) application sources.
+Two complementary backends for changing duration and pitch.
+
+**PaulStretch** (by Nasca Octavian Paul, public domain) for extreme time-stretching via phase-randomized spectral resynthesis. It produces the smeared, ambient, pad-like textures PaulStretch is known for and is intended for large stretch factors where a phase-vocoder (`spectral.time_stretch`) breaks down. This is an original implementation built on the signalsmith FFT; it does not use the GPLv3 [paulxstretch](https://github.com/essej/paulxstretch) application sources.
 
 ```python
 from nanodsp.timestretch import paulstretch
@@ -550,6 +557,23 @@ out = paulstretch(buf, stretch=8.0, highpass_hz=500.0, lowpass_hz=6000.0)
 ```
 
 Output length is approximately `frames * stretch`; all channels share the same length, and stereo material is decorrelated (per-channel seeds) for a wider image. Output is reproducible for a given `seed`. Also available as the CLI filter `paulstretch:stretch=...`.
+
+**Signalsmith stretch** ([signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch), MIT) is a transient-aware, phase-vocoder-derived stretcher that stays musical at modest ratios and decouples time-stretch from pitch-shift. Use it for clean slow-downs/speed-ups and independent pitch-shifting rather than the smeared PaulStretch character.
+
+```python
+from nanodsp.timestretch import signalsmith_stretch
+
+# Time-stretch, pitch preserved (2x longer)
+out = signalsmith_stretch(buf, stretch=2.0)
+
+# Pure pitch-shift, length unchanged (down a perfect fifth)
+out = signalsmith_stretch(buf, stretch=1.0, semitones=-7.0)
+
+# Stretch and pitch-shift together; tonality limit preserves high-frequency air
+out = signalsmith_stretch(buf, stretch=1.5, semitones=12.0, tonality_hz=8000.0)
+```
+
+Output length is approximately `frames * stretch`; time-stretch and pitch-shift are independent, all channels are processed coherently in one pass, and output is reproducible for a given `seed`. Also available as the CLI filter `signalsmith_stretch:stretch=...`.
 
 ### `nanodsp.synthesis` -- Oscillators, noise, drums, physical modeling
 
@@ -877,6 +901,7 @@ uv run python demos/demo_analysis.py demos/s01.wav   # prints to stdout
 | `demo_fxdsp.py` | 38 | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators, ping-pong delay, frequency shifter, ring modulator |
 | `demo_iir_filters.py` | 23 | Butterworth, Chebyshev I/II, Elliptic, Bessel filters at various orders |
 | `demo_paulstretch.py` | 11 | PaulStretch extreme time-stretch: stretch factors, window size, transient preservation, octave shift, harmonics/spread, spectral band-pass, long drone |
+| `demo_signalsmith_stretch.py` | 15 | Signalsmith time-stretch / pitch-shift: stretch factors, pure pitch-shifts (octave, fifth, detune), tonality limit, combined stretch+pitch (monster/chipmunk), cheaper preset, and an extreme-factor signalsmith-vs-PaulStretch comparison |
 
 File-processing scripts share the same interface:
 

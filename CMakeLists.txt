@@ -14,6 +14,9 @@ find_package(nanobind CONFIG REQUIRED)
 # Signalsmith DSP (header-only)
 add_subdirectory(thirdparty/signalsmith)
 
+# Signalsmith Stretch (header-only, MIT; builds on signalsmith-dsp)
+add_subdirectory(thirdparty/signalsmith-stretch)
+
 # DaisySP (MIT + LGPL-2.1)
 add_subdirectory(thirdparty/DaisySP)
 add_subdirectory(thirdparty/DaisySP/DaisySP-LGPL)
@@ -194,8 +197,9 @@ nanobind_add_module(_core
     src/nanodsp/_core_fxdsp.cpp
     src/nanodsp/_core_iirdesign.cpp
     src/nanodsp/_core_paulstretch.cpp
+    src/nanodsp/_core_signalsmith_stretch.cpp
 )
-target_link_libraries(_core PRIVATE signalsmith-dsp DaisySP DaisySP_LGPL stk_subset madronalib-dsp hisstools grainflow-dsp vafilters-dsp fxdsp dspfilters)
+target_link_libraries(_core PRIVATE signalsmith-dsp signalsmith-stretch DaisySP DaisySP_LGPL stk_subset madronalib-dsp hisstools grainflow-dsp vafilters-dsp fxdsp dspfilters)
 target_include_directories(_core SYSTEM PRIVATE thirdparty/choc)
 
 # Mark all thirdparty include dirs as SYSTEM to suppress warnings from their headers
