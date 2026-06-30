@@ -66,7 +66,15 @@ static void bind_daisysp_oscillators(nb::module_ &m) {
     using FO = daisysp::FormantOscillator;
     nb::class_<FO>(mod, "FormantOscillator", "Formant synthesis oscillator")
         .def(nb::init<>())
-        .def("init", &FO::Init, "sample_rate"_a)
+        .def("init", [](FO &self, float sample_rate) {
+            self.Init(sample_rate);
+            // DaisySP's FormantOscillator::Init() leaves ps_inc_ uninitialized,
+            // yet Process() reads it on the first sample -- undefined behavior
+            // that yields a stuck output on some toolchains. After Init(),
+            // phase_shift_ == 0, so SetPhaseShift(0) deterministically sets
+            // ps_inc_ = 0 without editing the vendored source.
+            self.SetPhaseShift(0.0f);
+        }, "sample_rate"_a)
         .def("set_formant_freq", &FO::SetFormantFreq, "freq"_a)
         .def("set_carrier_freq", &FO::SetCarrierFreq, "freq"_a)
         .def("set_phase_shift", &FO::SetPhaseShift, "ps"_a)
