@@ -65,6 +65,7 @@ build-backend = "scikit_build_core.build"
 wheel.packages = ["src/nanodsp"]
 wheel.exclude = [
     "*.cpp",
+    "*.h",
 ]
 cmake.args = []
 cmake.define = {}
