@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://shakfu.github.io/nanodsp/guide/composed/">
+        <link rel="canonical" href="https://shakfu.github.io/nanodsp/guide/timestretch/">
       
       
-        <link rel="prev" href="../analysis/">
+        <link rel="prev" href="../spectral/">
       
       
-        <link rel="next" href="../granular/">
+        <link rel="next" href="../synthesis/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Composed Effects - nanodsp</title>
+        <title>Time-stretching - nanodsp</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#composed-effects" class="md-skip">
+        <a href="#time-stretching-and-pitch-shifting" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Composed Effects
+              Time-stretching
             
           </span>
         </div>
@@ -576,10 +576,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../timestretch/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Time-stretching
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -595,6 +622,164 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#paulstretch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PaulStretch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-stretch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core stretch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#window-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window size
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transient-preservation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transient preservation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spectral-effects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spectral effects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-long-drone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A long drone
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#signalsmith-stretch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signalsmith stretch
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Signalsmith stretch">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pitch-shifting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pitch-shifting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tonality-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tonality limit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cheaper-preset-and-seed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cheaper preset and seed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-which-stretcher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use which stretcher
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -660,37 +845,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Composed Effects
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../composed/" class="md-nav__link">
         
   
   
@@ -706,103 +864,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#mastering-chains" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Mastering chains
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#vocal-processing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Vocal processing
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mixing-tools" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Mixing tools
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#delay-effects" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Delay effects
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pitch-and-modulation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pitch and modulation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#creative-effects" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Creative effects
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#chaining-composed-effects" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Chaining composed effects
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1497,10 +1558,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#mastering-chains" class="md-nav__link">
+  <a href="#paulstretch" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mastering chains
+        PaulStretch
       
     </span>
   </a>
@@ -1508,10 +1569,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#vocal-processing" class="md-nav__link">
+  <a href="#core-stretch" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Vocal processing
+        Core stretch
       
     </span>
   </a>
@@ -1519,10 +1580,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mixing-tools" class="md-nav__link">
+  <a href="#window-size" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mixing tools
+        Window size
       
     </span>
   </a>
@@ -1530,10 +1591,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#delay-effects" class="md-nav__link">
+  <a href="#transient-preservation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Delay effects
+        Transient preservation
       
     </span>
   </a>
@@ -1541,10 +1602,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pitch-and-modulation" class="md-nav__link">
+  <a href="#spectral-effects" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pitch and modulation
+        Spectral effects
       
     </span>
   </a>
@@ -1552,10 +1613,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#creative-effects" class="md-nav__link">
+  <a href="#a-long-drone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Creative effects
+        A long drone
       
     </span>
   </a>
@@ -1563,10 +1624,71 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#chaining-composed-effects" class="md-nav__link">
+  <a href="#signalsmith-stretch" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Chaining composed effects
+        Signalsmith stretch
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Signalsmith stretch">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pitch-shifting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pitch-shifting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tonality-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tonality limit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cheaper-preset-and-seed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cheaper preset and seed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-which-stretcher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use which stretcher
       
     </span>
   </a>
@@ -1593,104 +1715,131 @@
   
 
 
-<h1 id="composed-effects">Composed Effects<a class="headerlink" href="#composed-effects" title="Permanent link">&para;</a></h1>
-<p>Higher-level effects built by combining multiple primitives.</p>
-<h2 id="mastering-chains">Mastering chains<a class="headerlink" href="#mastering-chains" title="Permanent link">&para;</a></h2>
+<h1 id="time-stretching-and-pitch-shifting">Time-stretching and pitch-shifting<a class="headerlink" href="#time-stretching-and-pitch-shifting" title="Permanent link">&para;</a></h1>
+<p>The <code>timestretch</code> module has two backends for changing duration and pitch: <strong>PaulStretch</strong> for extreme, textural stretches, and <strong>Signalsmith stretch</strong> for clean, musical stretching and independent pitch-shifting. See <a href="#when-to-use-which-stretcher">When to use which stretcher</a> at the end for picking between these and the <a href="../spectral/">Spectral</a> phase vocoder.</p>
+<h2 id="paulstretch">PaulStretch<a class="headerlink" href="#paulstretch" title="Permanent link">&para;</a></h2>
+<p>PaulStretch is an <em>extreme</em> time-stretching technique by Nasca Octavian Paul (public domain). Where the phase vocoder in <a href="../spectral/">Spectral</a> (<code>spectral.time_stretch</code>) is built to change duration by modest ratios while keeping a signal recognizable, PaulStretch is built for very large factors -- 8x, 20x, 50x -- where the result is intentionally smeared into ambient, pad-like textures rather than a faithful slow-down.</p>
+<p>It works by stepping through the input in overlapping windows, taking an FFT of each, <strong>keeping the magnitude spectrum but replacing every bin's phase with a random value</strong>, and overlap-adding the inverse transforms. Randomizing the phase removes the temporal structure within each window, so stretching far past the original length produces a smooth wash instead of the metallic/"stuttering" artifacts a phase vocoder gives at extreme ratios. Pitch is preserved unless you ask for a shift.</p>
+<p>This is an original implementation built on the signalsmith FFT; it does not use the GPLv3 <a href="https://github.com/essej/paulxstretch">paulxstretch</a> application sources -- only the public-domain algorithm is reproduced.</p>
+<h2 id="core-stretch">Core stretch<a class="headerlink" href="#core-stretch" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp</span><span class="w"> </span><span class="kn">import</span> <span class="n">AudioBuffer</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp.effects</span><span class="w"> </span><span class="kn">import</span> <span class="n">composed</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp.timestretch</span><span class="w"> </span><span class="kn">import</span> <span class="n">paulstretch</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">buf</span> <span class="o">=</span> <span class="n">AudioBuffer</span><span class="o">.</span><span class="n">from_file</span><span class="p">(</span><span class="s2">&quot;mix.wav&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">buf</span> <span class="o">=</span> <span class="n">AudioBuffer</span><span class="o">.</span><span class="n">from_file</span><span class="p">(</span><span class="s2">&quot;input.wav&quot;</span><span class="p">)</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1"># Full mastering: DC block -&gt; EQ -&gt; compress -&gt; limit -&gt; loudness normalize</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">mastered</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">master</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">target_lufs</span><span class="o">=-</span><span class="mf">14.0</span><span class="p">)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Genre-specific mastering presets</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">pop</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">master_pop</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">hiphop</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">master_hiphop</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">edm</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">master_edm</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">classical</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">master_classical</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="n">podcast</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">master_podcast</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1"># 8x longer, pitch preserved</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">out</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">8.0</span><span class="p">)</span>
 </code></pre></div>
-<h2 id="vocal-processing">Vocal processing<a class="headerlink" href="#vocal-processing" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Full vocal chain: de-ess -&gt; EQ -&gt; compress -&gt; limit</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">vocals</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">vocal_chain</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">de_ess_freq</span><span class="o">=</span><span class="mf">6000.0</span><span class="p">)</span>
+<p>The output length is approximately <code>frames * stretch</code>. PaulStretch is usually fed a short source that it grows into a long texture, so beware that large factors produce large files. All channels share the same output length, and stereo material is decorrelated (each channel uses a different phase seed) for a wider image. Output is reproducible for a given <code>seed</code>.</p>
+<h2 id="window-size">Window size<a class="headerlink" href="#window-size" title="Permanent link">&para;</a></h2>
+<p>The window size sets the trade-off between time and frequency detail.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Smaller window keeps more detail (more movement)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">detailed</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">window_size</span><span class="o">=</span><span class="mi">1024</span><span class="p">)</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># With loudness target</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">vocals</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">vocal_chain</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">target_lufs</span><span class="o">=-</span><span class="mf">16.0</span><span class="p">)</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Larger window is smoother and more diffuse (more &quot;frozen&quot;)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">smooth</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">window_size</span><span class="o">=</span><span class="mi">16384</span><span class="p">)</span>
 </code></pre></div>
-<h2 id="mixing-tools">Mixing tools<a class="headerlink" href="#mixing-tools" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Add brightness above 3 kHz</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">bright</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">exciter</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="mf">3000.0</span><span class="p">,</span> <span class="n">amount</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Tame sibilance around 6 kHz</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">deessed</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">de_esser</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="mf">6000.0</span><span class="p">,</span> <span class="n">threshold_db</span><span class="o">=-</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># New York compression (heavy compress blended with dry)</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">punchy</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">parallel_compress</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">mix</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">threshold_db</span><span class="o">=-</span><span class="mf">30.0</span><span class="p">)</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Multiband compression</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">multi</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">multiband_compress</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">crossover_freqs</span><span class="o">=</span><span class="p">[</span><span class="mf">200.0</span><span class="p">,</span> <span class="mf">2000.0</span><span class="p">,</span> <span class="mf">8000.0</span><span class="p">],</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">ratios</span><span class="o">=</span><span class="p">[</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="p">)</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="c1"># Vowel formant filtering</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="n">vowel</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">formant_filter</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">vowel</span><span class="o">=</span><span class="s2">&quot;a&quot;</span><span class="p">)</span>
+<p>Typical values are 2048--16384. Smaller windows track fast changes; larger windows blur them into a steadier drone.</p>
+<h2 id="transient-preservation">Transient preservation<a class="headerlink" href="#transient-preservation" title="Permanent link">&para;</a></h2>
+<p>Pure phase randomization softens attacks. The <code>onset</code> parameter detects transients and keeps the <em>original</em> phase on those frames, so percussive hits stay defined inside the smear.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># 0 disables (full smear); (0, 1] preserves onsets, higher = more sensitive</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">out</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">onset</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
 </code></pre></div>
-<h2 id="delay-effects">Delay effects<a class="headerlink" href="#delay-effects" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Stereo delay with independent L/R times</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">delayed</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">stereo_delay</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">left_ms</span><span class="o">=</span><span class="mf">250.0</span><span class="p">,</span> <span class="n">right_ms</span><span class="o">=</span><span class="mf">375.0</span><span class="p">,</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>                                 <span class="n">feedback</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">mix</span><span class="o">=</span><span class="mf">0.4</span><span class="p">)</span>
+<h2 id="spectral-effects">Spectral effects<a class="headerlink" href="#spectral-effects" title="Permanent link">&para;</a></h2>
+<p>These reshape the magnitude spectrum before resynthesis.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Pitch / octave shift (formants move with the pitch)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">up</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">pitch_semitones</span><span class="o">=</span><span class="mf">12.0</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">down</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">pitch_semitones</span><span class="o">=-</span><span class="mf">12.0</span><span class="p">)</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Ping-pong delay (signal bounces between L/R)</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">pp</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">ping_pong_delay</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">delay_ms</span><span class="o">=</span><span class="mf">375.0</span><span class="p">,</span> <span class="n">feedback</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">mix</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Added harmonics (integer-multiple copies, geometric decay) + spectral</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># spread (blur across neighbouring bins): thicker, more diffuse pad</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">thick</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">harmonics</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">spread</span><span class="o">=</span><span class="mf">6.0</span><span class="p">)</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="c1"># Spectral band filtering -- zero bins outside the band before resynthesis</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">band</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">highpass_hz</span><span class="o">=</span><span class="mf">500.0</span><span class="p">,</span> <span class="n">lowpass_hz</span><span class="o">=</span><span class="mf">6000.0</span><span class="p">)</span>
 </code></pre></div>
-<h2 id="pitch-and-modulation">Pitch and modulation<a class="headerlink" href="#pitch-and-modulation" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># PSOLA pitch shift (time-domain, best for monophonic)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">up_octave</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">psola_pitch_shift</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">semitones</span><span class="o">=</span><span class="mf">12.0</span><span class="p">)</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">down_fifth</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">psola_pitch_shift</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">semitones</span><span class="o">=-</span><span class="mf">7.0</span><span class="p">)</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># Frequency shifter (Bode-style, shifts all frequencies by fixed Hz)</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">shifted</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">freq_shift</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">shift_hz</span><span class="o">=</span><span class="mf">100.0</span><span class="p">)</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1"># Ring modulator (produces sum and difference tones)</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">ring</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">ring_mod</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">carrier_freq</span><span class="o">=</span><span class="mf">300.0</span><span class="p">)</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">ring_lfo</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">ring_mod</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">carrier_freq</span><span class="o">=</span><span class="mf">300.0</span><span class="p">,</span> <span class="n">lfo_freq</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span> <span class="n">lfo_width</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1"># Auto-pan (LFO-driven stereo panning)</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="n">panned</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">auto_pan</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">rate</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<h2 id="a-long-drone">A long drone<a class="headerlink" href="#a-long-drone" title="Permanent link">&para;</a></h2>
+<p>Combine the parameters for a sustained ambient texture:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">drone</span> <span class="o">=</span> <span class="n">paulstretch</span><span class="p">(</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">buf</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">stretch</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">window_size</span><span class="o">=</span><span class="mi">8192</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">onset</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">lowpass_hz</span><span class="o">=</span><span class="mf">8000.0</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">)</span>
 </code></pre></div>
-<h2 id="creative-effects">Creative effects<a class="headerlink" href="#creative-effects" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Shimmer reverb -- reverb + octave-up pitch shift blended back</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">shimmer</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">shimmer_reverb</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">mix</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span> <span class="n">shimmer</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">preset</span><span class="o">=</span><span class="s2">&quot;cathedral&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Tape echo -- darkening repeats with saturation</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">tape</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">tape_echo</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">delay_ms</span><span class="o">=</span><span class="mf">300.0</span><span class="p">,</span> <span class="n">feedback</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">tone</span><span class="o">=</span><span class="mf">3000.0</span><span class="p">,</span> <span class="n">drive</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># Lo-fi degradation (bitcrush + sample rate reduce + saturation)</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="n">lofi</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">lo_fi</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">bit_depth</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">reduce</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">tone</span><span class="o">=</span><span class="mf">3000.0</span><span class="p">)</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="c1"># Telephone simulation (300-3400 Hz bandpass + saturation)</span>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="n">phone</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">telephone</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
-<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="c1"># Gated reverb (80s production -- reverb + noise gate)</span>
-<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="n">gated</span> <span class="o">=</span> <span class="n">composed</span><span class="o">.</span><span class="n">gated_reverb</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">preset</span><span class="o">=</span><span class="s2">&quot;plate&quot;</span><span class="p">,</span> <span class="n">mix</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
-<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>                               <span class="n">gate_threshold_db</span><span class="o">=-</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">gate_hold_ms</span><span class="o">=</span><span class="mf">30.0</span><span class="p">)</span>
+<h2 id="signalsmith-stretch">Signalsmith stretch<a class="headerlink" href="#signalsmith-stretch" title="Permanent link">&para;</a></h2>
+<p><code>signalsmith_stretch</code> wraps the MIT-licensed <a href="https://github.com/Signalsmith-Audio/signalsmith-stretch">signalsmith-stretch</a> library (Geraint Luff / Signalsmith Audio), a transient-aware, phase-vocoder-derived algorithm. Where PaulStretch <em>intentionally</em> smears the signal, this aims to keep it recognizable and musical -- a clean slow-down or speed-up -- and it treats <strong>pitch and duration as independent controls</strong>. All channels are processed together so a stereo image stays coherent.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp.timestretch</span><span class="w"> </span><span class="kn">import</span> <span class="n">signalsmith_stretch</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Time-stretch, pitch preserved</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">slower</span> <span class="o">=</span> <span class="n">signalsmith_stretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>    <span class="c1"># 2x longer</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">faster</span> <span class="o">=</span> <span class="n">signalsmith_stretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">0.75</span><span class="p">)</span>   <span class="c1"># shorter</span>
 </code></pre></div>
-<h2 id="chaining-composed-effects">Chaining composed effects<a class="headerlink" href="#chaining-composed-effects" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nanodsp.effects</span><span class="w"> </span><span class="kn">import</span> <span class="n">filters</span><span class="p">,</span> <span class="n">dynamics</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># Full production chain using pipe()</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">result</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">buf</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">composed</span><span class="o">.</span><span class="n">de_esser</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="mf">6000.0</span><span class="p">)</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">filters</span><span class="o">.</span><span class="n">highpass</span><span class="p">,</span> <span class="n">cutoff_hz</span><span class="o">=</span><span class="mf">80.0</span><span class="p">)</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">dynamics</span><span class="o">.</span><span class="n">compress</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=-</span><span class="mf">20.0</span><span class="p">)</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">composed</span><span class="o">.</span><span class="n">shimmer_reverb</span><span class="p">,</span> <span class="n">mix</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">shimmer</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">dynamics</span><span class="o">.</span><span class="n">limit</span><span class="p">)</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="p">)</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="n">result</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;output.wav&quot;</span><span class="p">)</span>
+<h3 id="pitch-shifting">Pitch-shifting<a class="headerlink" href="#pitch-shifting" title="Permanent link">&para;</a></h3>
+<p><code>semitones</code> shifts pitch independently of <code>stretch</code>, so <code>stretch=1.0</code> gives a pure pitch-shift with the duration unchanged.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">up</span> <span class="o">=</span> <span class="n">signalsmith_stretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">semitones</span><span class="o">=</span><span class="mf">12.0</span><span class="p">)</span>   <span class="c1"># up one octave</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">down</span> <span class="o">=</span> <span class="n">signalsmith_stretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">semitones</span><span class="o">=-</span><span class="mf">7.0</span><span class="p">)</span>  <span class="c1"># down a perfect fifth</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Decoupled: change both at once</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">both</span> <span class="o">=</span> <span class="n">signalsmith_stretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">semitones</span><span class="o">=</span><span class="mf">5.0</span><span class="p">)</span>
 </code></pre></div>
+<h3 id="tonality-limit">Tonality limit<a class="headerlink" href="#tonality-limit" title="Permanent link">&para;</a></h3>
+<p>Large pitch shifts move the whole spectrum, which can sound thin (up) or dark (down). The <code>tonality_hz</code> limit rolls the shift back toward the original above that frequency, keeping the high-end timbre and "air" more natural -- around 8000 Hz is a common choice for voice.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">out</span> <span class="o">=</span> <span class="n">signalsmith_stretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">semitones</span><span class="o">=</span><span class="mf">7.0</span><span class="p">,</span> <span class="n">tonality_hz</span><span class="o">=</span><span class="mf">8000.0</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="cheaper-preset-and-seed">Cheaper preset and seed<a class="headerlink" href="#cheaper-preset-and-seed" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Lower-CPU preset (slightly lower quality)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">out</span> <span class="o">=</span> <span class="n">signalsmith_stretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">cheaper</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Past ~2x the algorithm randomizes phase; `seed` makes that reproducible</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">out</span> <span class="o">=</span> <span class="n">signalsmith_stretch</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">stretch</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h2>
+<p>Both effects are available as filters in the <a href="../../cli/">CLI</a>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-o<span class="w"> </span>out.wav<span class="w"> </span>-f<span class="w"> </span>paulstretch:stretch<span class="o">=</span><span class="m">8</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-o<span class="w"> </span>out.wav<span class="w"> </span>-f<span class="w"> </span>paulstretch:stretch<span class="o">=</span><span class="m">20</span>,pitch_semitones<span class="o">=</span><span class="m">12</span>,onset<span class="o">=</span><span class="m">0</span>.5
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-o<span class="w"> </span>out.wav<span class="w"> </span>-f<span class="w"> </span>signalsmith_stretch:stretch<span class="o">=</span><span class="m">2</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-o<span class="w"> </span>out.wav<span class="w"> </span>-f<span class="w"> </span>signalsmith_stretch:stretch<span class="o">=</span><span class="m">1</span>,semitones<span class="o">=</span>-5,tonality_hz<span class="o">=</span><span class="m">8000</span>
+</code></pre></div>
+<h2 id="when-to-use-which-stretcher">When to use which stretcher<a class="headerlink" href="#when-to-use-which-stretcher" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>spectral.time_stretch</code> (phase vocoder)</th>
+<th><code>timestretch.signalsmith_stretch</code></th>
+<th><code>timestretch.paulstretch</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Best for</td>
+<td>Modest ratios, keeping the signal recognizable</td>
+<td>Clean stretch + independent pitch-shift</td>
+<td>Extreme ratios, ambient/textural results</td>
+</tr>
+<tr>
+<td>Character</td>
+<td>Faithful slow-down/speed-up</td>
+<td>Musical, transient-aware</td>
+<td>Smeared, diffuse, pad-like</td>
+</tr>
+<tr>
+<td>Pitch control</td>
+<td>Separate pitch-shift</td>
+<td>Built-in, decoupled from stretch</td>
+<td>Spectral shift (formants move)</td>
+</tr>
+<tr>
+<td>Typical range</td>
+<td>~0.5x--2x</td>
+<td>~0.5x--4x</td>
+<td>~4x--50x+</td>
+</tr>
+</tbody>
+</table>
 
 
 

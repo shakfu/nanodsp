@@ -346,6 +346,8 @@
       
         
       
+        
+      
     
     
     
@@ -557,6 +559,34 @@
     
   
     Spectral
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/timestretch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Time-stretching
   
 
     
@@ -901,6 +931,8 @@
       
         
           
+        
+      
         
       
         
@@ -1348,6 +1380,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../api/timestretch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Time-stretching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/synthesis/" class="md-nav__link">
         
   
@@ -1598,6 +1658,14 @@
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="c1"># Dry run (show chain without processing)</span>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-n<span class="w"> </span>-f<span class="w"> </span>highpass:cutoff_hz<span class="o">=</span><span class="m">80</span><span class="w"> </span>-f<span class="w"> </span>compress:ratio<span class="o">=</span><span class="m">4</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="c1"># PaulStretch extreme time-stretch (8x longer; smeared, pad-like texture)</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-o<span class="w"> </span>out.wav<span class="w"> </span>-f<span class="w"> </span>paulstretch:stretch<span class="o">=</span><span class="m">8</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-o<span class="w"> </span>out.wav<span class="w"> </span>-f<span class="w"> </span>paulstretch:stretch<span class="o">=</span><span class="m">20</span>,pitch_semitones<span class="o">=</span><span class="m">12</span>,onset<span class="o">=</span><span class="m">0</span>.5
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="c1"># Signalsmith high-quality stretch / pitch-shift (musical at modest ratios)</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-o<span class="w"> </span>out.wav<span class="w"> </span>-f<span class="w"> </span>signalsmith_stretch:stretch<span class="o">=</span><span class="m">2</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>nanodsp<span class="w"> </span>process<span class="w"> </span>input.wav<span class="w"> </span>-o<span class="w"> </span>out.wav<span class="w"> </span>-f<span class="w"> </span>signalsmith_stretch:stretch<span class="o">=</span><span class="m">1</span>,semitones<span class="o">=</span>-5,tonality_hz<span class="o">=</span><span class="m">8000</span>
 </code></pre></div>
 <h2 id="analyze">Analyze<a class="headerlink" href="#analyze" title="Permanent link">&para;</a></h2>
 <p>Measure audio properties.</p>
