@@ -64,6 +64,36 @@ thick = paulstretch(buf, stretch=8.0, harmonics=3, spread=6.0)
 band = paulstretch(buf, stretch=8.0, highpass_hz=500.0, lowpass_hz=6000.0)
 ```
 
+## Constant-Q spread
+
+`spread` blurs across a fixed number of FFT bins. Because bin spacing is linear in frequency, a given radius covers many more octaves down low than up high, so bass partials smear into mush while the top end barely moves.
+
+`spread_octaves` blurs on a log-frequency axis instead, so every partial is smeared across the same fraction of its own frequency. The result is musically even across the range, and the width is independent of `window_size` and sample rate.
+
+```python
+# Each partial smeared by ~0.3 octaves, top to bottom
+even = paulstretch(buf, stretch=8.0, spread_octaves=0.3)
+```
+
+Typical values are 0.05--0.5. Prefer this over `spread` unless the low-end bias is the effect you are after.
+
+## Tonal vs. noise
+
+Most material is a mix of steady partials and a noise floor underneath them. Comparing the spectrum against a smoothed copy of itself separates the two: anything standing above its own local envelope is tonal, the rest is noise. `tonal_vs_noise` then blends the output toward one part or the other.
+
+```python
+# Keep the pitches, drop the hiss -- a cleaner, more harmonic drone
+pitched = paulstretch(buf, stretch=8.0, tonal_vs_noise=1.0)
+
+# Keep the hiss, drop the pitches -- a breathy, unpitched wash
+airy = paulstretch(buf, stretch=8.0, tonal_vs_noise=-1.0)
+
+# Partial application
+subtle = paulstretch(buf, stretch=8.0, tonal_vs_noise=0.4)
+```
+
+The parameter runs from -1 to +1 with 0 leaving the spectrum untouched, and the effect increases monotonically across the whole range. `tonal_noise_octaves` sets the width of the envelope used for the comparison: narrow settings (0.1) are a high bar and keep only sharp partials, wider settings (0.5) let more of the spectrum count as tonal.
+
 ## A long drone
 
 Combine the parameters for a sustained ambient texture:

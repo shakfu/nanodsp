@@ -87,6 +87,15 @@ def main():
     # --- Spectral band filtering applied before resynthesis ---
     render(paulstretch(src, stretch=8.0, highpass_hz=500.0, lowpass_hz=6000.0), "stretch-8x-bandpass")
 
+    # --- Constant-Q spread: every partial smeared by the same number of
+    #     octaves, unlike `spread`, which blurs a fixed number of bins ---
+    render(paulstretch(src, stretch=8.0, spread_octaves=0.15), "stretch-8x-spread-narrow")
+    render(paulstretch(src, stretch=8.0, spread_octaves=0.5), "stretch-8x-spread-wide")
+
+    # --- Tonal / noise separation: keep the pitched peaks or the floor ---
+    render(paulstretch(src, stretch=8.0, tonal_vs_noise=1.0), "stretch-8x-tonal")
+    render(paulstretch(src, stretch=8.0, tonal_vs_noise=-1.0), "stretch-8x-noise")
+
     # --- Extreme "drone": very long stretch + transient preservation + low-pass ---
     render(
         paulstretch(src, stretch=20.0, window_size=8192, onset=0.4, lowpass_hz=8000.0),

@@ -28,6 +28,7 @@ nanodsp process input.wav -n -f highpass:cutoff_hz=80 -f compress:ratio=4
 # PaulStretch extreme time-stretch (8x longer; smeared, pad-like texture)
 nanodsp process input.wav -o out.wav -f paulstretch:stretch=8
 nanodsp process input.wav -o out.wav -f paulstretch:stretch=20,pitch_semitones=12,onset=0.5
+nanodsp process input.wav -o out.wav -f paulstretch:stretch=12,tonal_vs_noise=1,spread_octaves=0.3
 
 # Signalsmith high-quality stretch / pitch-shift (musical at modest ratios)
 nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=2

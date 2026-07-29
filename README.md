@@ -554,6 +554,14 @@ out = paulstretch(buf, stretch=20.0, window_size=8192, onset=0.5)
 out = paulstretch(buf, stretch=8.0, pitch_semitones=12.0)   # up one octave
 out = paulstretch(buf, stretch=8.0, harmonics=3, spread=8.0) # thicker, more diffuse
 out = paulstretch(buf, stretch=8.0, highpass_hz=500.0, lowpass_hz=6000.0)
+
+# Constant-Q spread -- each partial smeared by a fixed fraction of its own
+# frequency, unlike `spread`, which blurs a fixed number of bins
+out = paulstretch(buf, stretch=8.0, spread_octaves=0.3)
+
+# Tonal/noise separation: +1 keeps the pitched peaks, -1 keeps the noise floor
+out = paulstretch(buf, stretch=8.0, tonal_vs_noise=1.0)    # cleaner drone
+out = paulstretch(buf, stretch=8.0, tonal_vs_noise=-1.0)   # breathy wash
 ```
 
 Output length is approximately `frames * stretch`; all channels share the same length, and stereo material is decorrelated (per-channel seeds) for a wider image. Output is reproducible for a given `seed`. Also available as the CLI filter `paulstretch:stretch=...`.
@@ -900,7 +908,7 @@ uv run python demos/demo_analysis.py demos/s01.wav   # prints to stdout
 | `demo_grainflow.py` | 7 | Granular clouds (basic, dense), pitch shift, sparse stochastic, stereo panning, recorder |
 | `demo_fxdsp.py` | 38 | Antialiased waveshaping, Schroeder/Moorer reverbs, formant filter, PSOLA pitch shift, MinBLEP oscillators, ping-pong delay, frequency shifter, ring modulator |
 | `demo_iir_filters.py` | 23 | Butterworth, Chebyshev I/II, Elliptic, Bessel filters at various orders |
-| `demo_paulstretch.py` | 11 | PaulStretch extreme time-stretch: stretch factors, window size, transient preservation, octave shift, harmonics/spread, spectral band-pass, long drone |
+| `demo_paulstretch.py` | 15 | PaulStretch extreme time-stretch: stretch factors, window size, transient preservation, octave shift, harmonics/spread, constant-Q spread, tonal/noise separation, spectral band-pass, long drone |
 | `demo_signalsmith_stretch.py` | 15 | Signalsmith time-stretch / pitch-shift: stretch factors, pure pitch-shifts (octave, fifth, detune), tonality limit, combined stretch+pitch (monster/chipmunk), cheaper preset, and an extreme-factor signalsmith-vs-PaulStretch comparison |
 
 File-processing scripts share the same interface:

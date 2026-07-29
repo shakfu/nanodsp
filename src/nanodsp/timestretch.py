@@ -29,6 +29,9 @@ def paulstretch(
     pitch_semitones: float = 0.0,
     harmonics: int = 0,
     spread: float = 0.0,
+    spread_octaves: float = 0.0,
+    tonal_vs_noise: float = 0.0,
+    tonal_noise_octaves: float = 0.2,
     lowpass_hz: float = 0.0,
     highpass_hz: float = 0.0,
     seed: int = 42,
@@ -63,7 +66,28 @@ def paulstretch(
         multiple of the spectrum with geometric decay, thickening the tone.
     spread : float
         Spectral blur radius in bins (0 = off). Smears energy across
-        neighbouring frequency bins for a more diffuse, noisy texture.
+        neighbouring frequency bins for a more diffuse, noisy texture. Because
+        bin spacing is linear in frequency, this smears low partials much more
+        (musically) than high ones; prefer ``spread_octaves`` unless that
+        asymmetry is what you want.
+    spread_octaves : float
+        Constant-Q spectral spread width in octaves (0 = off). Smears each
+        partial across a fixed fraction of its own frequency, so the effect is
+        musically even across the range and independent of ``window_size`` and
+        sample rate. Typical: 0.05--0.5.
+    tonal_vs_noise : float
+        Tonal/noise balance in ``[-1, 1]``; 0 (default) leaves the spectrum
+        untouched. The spectrum is split into peaks that stand above their own
+        local envelope and the noise floor beneath them, and this blends the
+        result toward one part or the other. ``+1`` keeps only the peaks, for
+        a cleaner and more pitched drone; ``-1`` keeps only the floor, for a
+        breathy, unpitched wash. The whole range is usable, and the effect
+        increases monotonically with the setting.
+    tonal_noise_octaves : float
+        Width in octaves of the spectral envelope used to decide what counts
+        as a peak for ``tonal_vs_noise``. Narrow settings are a higher bar and
+        keep only sharp partials; wider settings let more of the spectrum
+        through as tonal. Typical: 0.1--0.5.
     lowpass_hz : float
         Spectral low-pass cutoff in Hz (<= 0 disables). Zeroes bins above
         this frequency before resynthesis.
@@ -85,18 +109,24 @@ def paulstretch(
     Raises
     ------
     ValueError
-        If ``stretch`` is not positive or ``window_size`` is too small.
+        If ``stretch`` is not positive, ``window_size`` is too small, or
+        ``tonal_vs_noise`` is outside ``[-1, 1]``.
     """
     if stretch <= 0:
         raise ValueError(f"stretch must be positive, got {stretch}")
     if window_size < 16:
         raise ValueError(f"window_size must be >= 16, got {window_size}")
+    if not -1.0 <= tonal_vs_noise <= 1.0:
+        raise ValueError(f"tonal_vs_noise must be in [-1, 1], got {tonal_vs_noise}")
 
     proc = _ps.PaulStretch(int(window_size), float(buf.sample_rate))
     proc.onset_sensitivity = float(onset)
     proc.pitch_semitones = float(pitch_semitones)
     proc.harmonics = int(harmonics)
     proc.spread = float(spread)
+    proc.spread_octaves = float(spread_octaves)
+    proc.tonal_vs_noise = float(tonal_vs_noise)
+    proc.tonal_noise_octaves = float(tonal_noise_octaves)
     proc.lowpass_hz = float(lowpass_hz)
     proc.highpass_hz = float(highpass_hz)
 

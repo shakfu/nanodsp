@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.1.9]
+
+### Added
+
+- **Constant-Q spectral spread for PaulStretch** (`spread_octaves` on `nanodsp.timestretch.paulstretch`, `PaulStretch.spread_octaves`) -- spectral smearing on a log-frequency axis, so every partial is spread across a fixed fraction of its own frequency instead of a fixed number of FFT bins. The existing `spread` blurs a fixed bin radius, and because bin spacing is linear in frequency it smears bass partials into mush while barely touching the top end; measured on a 4096-point window, a 32-bin radius covers 1.11 octaves at 220 Hz but only 0.08 at 3520 Hz. The new control holds that width constant to within 7% across the same range, and is independent of `window_size` and sample rate. Implemented by warping the magnitude spectrum onto a log axis, smoothing with a forward/backward one-pole cascade, and warping back; `spread` is retained for the cases where its low-end bias is the wanted effect.
+
+- **Tonal/noise separation for PaulStretch** (`tonal_vs_noise` and `tonal_noise_octaves` on `nanodsp.timestretch.paulstretch`, plus the matching `PaulStretch` properties) -- splits the spectrum against a smoothed copy of itself, treating whatever stands above its own local envelope as tonal and the rest as the noise floor, then blends the output toward one component. `+1` keeps only the pitched peaks for a cleaner, more harmonic drone; `-1` keeps only the floor for a breathy, unpitched wash; `0` leaves the spectrum untouched. `tonal_noise_octaves` sets the width of the envelope used for the comparison, and so how sharp a partial must be to count as tonal. The effect increases monotonically across the whole `[-1, 1]` range.
+
+Both modules reproduce techniques described by the GPLv3 [paulxstretch](https://github.com/essej/paulxstretch) application, but are written from scratch against the vendored signalsmith RealFFT -- no upstream source is copied or linked, and the project stays MIT. Both also deviate deliberately from the original parameter mappings, which measurement showed to be poorly conditioned: upstream's spread dial produces no smoothing at all below roughly 0.8 (and the dead zone widens as the FFT shrinks), and its tonal/noise control collapses to silence at both extremes, because scaling the detection threshold eventually destroys the peaks along with the noise. See the notes in `thirdparty/VERSIONS.md`.
+
+### Changed
+
+- **PaulStretch demo extended** (`demos/demo_paulstretch.py`) -- 11 to 15 examples, adding narrow and wide constant-Q spreads and the two tonal/noise extremes.
+
 ## [0.1.8]
 
 ### Added

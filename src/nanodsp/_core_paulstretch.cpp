@@ -64,6 +64,8 @@ public:
         mag.assign(bins + 1, 0.0f);
         magScratch.assign(bins + 1, 0.0f);
         phase.assign(bins + 1, 0.0f);
+        warpBuf.assign(bins + 1, 0.0f);
+        envBuf.assign(bins + 1, 0.0f);
         reset();
     }
 
@@ -79,6 +81,9 @@ public:
     float pitchSemitones = 0.0f;     // spectral pitch/octave shift in semitones
     int harmonics = 0;               // number of added harmonic copies (0 = off)
     float spread = 0.0f;             // spectral blur radius in bins
+    float spreadOctaves = 0.0f;      // constant-Q spread width; 0 = off
+    float tonalVsNoise = 0.0f;       // [-1,1]; >0 keeps tonal, <0 keeps noise
+    float tonalNoiseOctaves = 0.2f;  // envelope-estimator width in octaves
     float lowpassHz = 0.0f;          // <=0 disables; zero bins above this freq
     float highpassHz = 0.0f;         // <=0 disables; zero bins below this freq
 
@@ -183,8 +188,130 @@ private:
         return m[i0] * (1.0f - frac) + m[i0 + 1] * frac;
     }
 
+    // Constant-Q smoothing of the magnitude spectrum.
+    //
+    // A plain box blur over bins smears low partials far more (in musical
+    // terms) than high ones, because bin spacing is linear in frequency. This
+    // instead warps the spectrum onto a log-frequency axis spanning
+    // [20 Hz, Nyquist], smooths there, and warps back -- so each partial is
+    // spread by a constant fraction of its own frequency.
+    //
+    // The smoother is a one-pole run forward then backward (zero phase, no
+    // group delay in the frequency direction), repeated `kPasses` times for a
+    // steeper skirt. `octaves` is the target standard deviation of the
+    // resulting kernel, so the smoothing width is set in musical terms and is
+    // independent of FFT size and sample rate. `dst` must not alias `src`.
+    void logSmooth(const std::vector<float> &src, std::vector<float> &dst,
+                   float octaves) const {
+        const size_t nf = bins;             // bin nf sits at Nyquist
+        const size_t M = nf + 1;
+        const double maxFreq = 0.5 * static_cast<double>(sampleRate);
+        const double minFreq = 20.0;
+        if (maxFreq <= minFreq || nf < 2) {
+            dst.assign(src.begin(), src.end());
+            return;
+        }
+        const double logMin = std::log(minFreq);
+        const double logRange = std::log(maxFreq) - logMin;
+
+        // --- warp linear -> log: log-axis point i samples the linear bin
+        //     holding frequency exp(logMin + (i/nf) * logRange) ---
+        for (size_t i = 0; i < M; ++i) {
+            double f = std::exp(logMin +
+                                (static_cast<double>(i) / nf) * logRange);
+            warpBuf[i] = magAt(src, f / maxFreq * nf);
+        }
+
+        // --- smooth on the log axis ---
+        //
+        // Convert the requested width in octaves to a one-pole coefficient.
+        // A single one-pole with coefficient a has impulse-response variance
+        // a/(1-a)^2 samples^2; running it forward and backward doubles that,
+        // and kPasses rounds multiply it again, so the cascade reaches
+        //     sigma^2 = 2 * kPasses * a / (1-a)^2.
+        // Solving that quadratic for a gives the closed form below, which
+        // stays well conditioned for both very narrow and very wide settings.
+        constexpr int kPasses = 2;
+        const double octPerSample =
+            (logRange / std::log(2.0)) / static_cast<double>(nf);
+        const double sigma = static_cast<double>(octaves) / octPerSample;
+        const double v = sigma * sigma / (2.0 * kPasses);
+        double a = 0.0;
+        if (v > 1e-12)
+            a = (2.0 * v + 1.0 - std::sqrt(4.0 * v + 1.0)) / (2.0 * v);
+        if (!(a > 0.0)) a = 0.0;
+        if (a > 0.999999) a = 0.999999;
+        const float af = static_cast<float>(a);
+        const float bf = 1.0f - af;
+
+        for (int p = 0; p < kPasses; ++p) {
+            warpBuf[0] = 0.0f;
+            for (size_t i = 1; i < M; ++i)
+                warpBuf[i] = warpBuf[i - 1] * af + warpBuf[i] * bf;
+            warpBuf[M - 1] = 0.0f;
+            for (size_t i = M - 1; i-- > 1;)
+                warpBuf[i] = warpBuf[i + 1] * af + warpBuf[i] * bf;
+        }
+
+        // --- warp log -> linear; bins below minFreq have no log-axis
+        //     counterpart and read as zero ---
+        dst[0] = 0.0f;
+        for (size_t i = 1; i < M; ++i) {
+            double f = static_cast<double>(i) / nf * maxFreq;
+            double x = (std::log(f) - logMin) / logRange * nf;
+            dst[i] = (x > 0.0) ? magAt(warpBuf, x) : 0.0f;
+        }
+    }
+
+    // Split the spectrum into tonal peaks and the noise floor beneath them,
+    // then keep one and discard the other.
+    //
+    // The constant-Q smoothed spectrum is a local envelope: whatever stands
+    // above its own neighbourhood is tonal, the rest is the noise floor. The
+    // spectrum is split into those two parts once, using a fixed detection
+    // threshold, and `tonalVsNoise` then blends the input toward one of them:
+    // +1 keeps only the peaks (a stretched choir holds its pitches and loses
+    // its hiss), -1 keeps only the floor (the pitches drop out and the breath
+    // remains), 0 leaves the spectrum untouched.
+    //
+    // Note this is not the mapping PaulXStretch uses. Scaling the threshold
+    // with the parameter, as it does, is degenerate at both extremes: the
+    // envelope is a smoothed copy of the same spectrum, so once the threshold
+    // exceeds a peak's own ratio to its neighbourhood the peak is destroyed
+    // along with the noise, and the setting collapses to silence. Blending
+    // between the two components instead keeps the whole range usable and
+    // monotone, and makes both endpoints mean what they say.
+    void applyTonalVsNoise() {
+        const size_t M = bins + 1;
+        // How far above the local envelope a bin must sit to count as tonal.
+        constexpr float kThreshold = 2.0f;
+
+        float bw = tonalNoiseOctaves;
+        if (bw <= 0.0f) bw = 0.2f;
+        logSmooth(mag, envBuf, bw);
+
+        float t = tonalVsNoise;
+        if (t > 1.0f) t = 1.0f;
+        if (t < -1.0f) t = -1.0f;
+
+        const float mix = std::fabs(t);
+        const float keep = 1.0f - mix;
+        for (size_t k = 0; k < M; ++k) {
+            float m = mag[k];
+            float tonal = m - (envBuf[k] + 1e-12f) * kThreshold;
+            if (tonal < 0.0f) tonal = 0.0f;
+            // The two parts sum back to the original magnitude.
+            float target = (t >= 0.0f) ? tonal : (m - tonal);
+            mag[k] = m * keep + target * mix;
+        }
+    }
+
     void applySpectralEffects() {
         const size_t M = bins + 1;
+
+        // --- tonal / noise separation: applied to the raw analysis spectrum,
+        //     before any reshaping smears the peaks it needs to detect ---
+        if (tonalVsNoise != 0.0f) applyTonalVsNoise();
 
         // --- pitch / octave shift: resample the magnitude spectrum ---
         if (pitchSemitones != 0.0f) {
@@ -224,6 +351,13 @@ private:
                 }
                 mag.swap(magScratch);
             }
+        }
+
+        // --- constant-Q spread: smear each partial across a fixed fraction of
+        //     its own frequency rather than a fixed number of bins ---
+        if (spreadOctaves > 0.0f) {
+            logSmooth(mag, magScratch, spreadOctaves);
+            mag.swap(magScratch);
         }
 
         // --- spectral band filtering: zero bins outside [highpass, lowpass] ---
@@ -269,6 +403,8 @@ private:
     std::vector<float> mag;
     std::vector<float> magScratch;
     std::vector<float> phase;
+    mutable std::vector<float> warpBuf;  // log-axis scratch for logSmooth
+    std::vector<float> envBuf;           // spectral envelope for tonal/noise
 
     float energyAvg = 0.0f;
     bool haveAvg = false;
@@ -300,7 +436,17 @@ void bind_paulstretch(nb::module_ &m) {
         .def_rw("harmonics", &PaulStretch::harmonics,
                 "Number of added harmonic copies (0 = off).")
         .def_rw("spread", &PaulStretch::spread,
-                "Spectral blur radius in bins.")
+                "Spectral blur radius in bins (linear-frequency box blur).")
+        .def_rw("spread_octaves", &PaulStretch::spreadOctaves,
+                "Constant-Q spectral spread width in octaves; 0 disables it. "
+                "Smears each partial across a fixed fraction of its own "
+                "frequency instead of a fixed number of bins.")
+        .def_rw("tonal_vs_noise", &PaulStretch::tonalVsNoise,
+                "Tonal/noise separation in [-1,1]; 0 disables it. Positive "
+                "keeps tonal peaks, negative keeps the noise floor.")
+        .def_rw("tonal_noise_octaves", &PaulStretch::tonalNoiseOctaves,
+                "Width in octaves of the spectral envelope estimator used by "
+                "tonal_vs_noise.")
         .def_rw("lowpass_hz", &PaulStretch::lowpassHz,
                 "Spectral low-pass cutoff in Hz (<=0 disables).")
         .def_rw("highpass_hz", &PaulStretch::highpassHz,

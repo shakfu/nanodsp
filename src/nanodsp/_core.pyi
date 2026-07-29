@@ -2611,6 +2611,9 @@ class paulstretch:
         pitch_semitones: float
         harmonics: int
         spread: float
+        spread_octaves: float
+        tonal_vs_noise: float
+        tonal_noise_octaves: float
         lowpass_hz: float
         highpass_hz: float
         def reset(self) -> None: ...
