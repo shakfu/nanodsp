@@ -10,6 +10,45 @@ from .._core import fxdsp as _fxdsp
 
 
 # ---------------------------------------------------------------------------
+# Channel linking
+# ---------------------------------------------------------------------------
+
+
+def _linked_gain(buf: AudioBuffer, process_fn) -> np.ndarray:
+    """Derive one gain curve for all channels from a linked detector.
+
+    *process_fn* must be a rectified, gain-only processor: ``out = x * g`` where
+    ``g`` depends on ``|x|`` alone.  Both the DaisySP ``Compressor`` and
+    ``Limiter`` satisfy this, so running the detector signal through the
+    processor and dividing recovers the gain curve exactly.
+
+    The detector is the per-frame maximum absolute value across channels, which
+    is the standard peak-linked design.  Where the detector is zero every
+    channel is zero at that frame, so the gain there is arbitrary and set to 1.
+    """
+    detector = np.ascontiguousarray(np.max(np.abs(buf.data), axis=0), dtype=np.float32)
+    processed = np.asarray(process_fn(detector), dtype=np.float32)
+    return np.divide(
+        processed,
+        detector,
+        out=np.ones_like(detector),
+        where=detector > 0.0,
+    )
+
+
+def _apply_linked(buf: AudioBuffer, process_fn) -> AudioBuffer:
+    """Apply *process_fn* with one gain curve shared across all channels."""
+    gain = _linked_gain(buf, process_fn)
+    return AudioBuffer(
+        (buf.data * gain[np.newaxis, :]).astype(np.float32),
+        sample_rate=buf.sample_rate,
+        channel_layout=buf.channel_layout,
+        label=buf.label,
+        copy=False,  # freshly allocated by the multiply
+    )
+
+
+# ---------------------------------------------------------------------------
 # DaisySP Dynamics
 # ---------------------------------------------------------------------------
 
@@ -22,8 +61,9 @@ def compress(
     release: float = 0.1,
     makeup: float = 0.0,
     auto_makeup: bool = False,
+    link: bool = True,
 ) -> AudioBuffer:
-    """Apply compression per channel.
+    """Apply compression.
 
     Parameters
     ----------
@@ -41,6 +81,16 @@ def compress(
         Makeup gain in dB. Typical range: 0--30.
     auto_makeup : bool
         If True, automatically compensate for gain reduction.
+    link : bool
+        Link the channel detectors (default). One gain curve is computed from
+        the per-frame maximum across channels and applied to all of them, so
+        the stereo image is preserved. With ``link=False`` each channel gets an
+        independent detector, which shifts the image whenever channel content is
+        asymmetric -- a loud transient in one channel then ducks only that
+        channel. Unlinked is occasionally wanted for per-channel utility work;
+        for stereo programme material linked is almost always correct.
+
+        No-op for mono input, which takes the direct path unchanged.
 
     Returns
     -------
@@ -59,11 +109,13 @@ def compress(
         c.auto_makeup(auto_makeup)
         return c.process(x)
 
+    if link and buf.channels > 1:
+        return _apply_linked(buf, _process)
     return _process_per_channel(buf, _process)
 
 
-def limit(buf: AudioBuffer, pre_gain: float = 1.0) -> AudioBuffer:
-    """Apply limiter per channel.
+def limit(buf: AudioBuffer, pre_gain: float = 1.0, link: bool = True) -> AudioBuffer:
+    """Apply a peak limiter.
 
     Parameters
     ----------
@@ -71,6 +123,9 @@ def limit(buf: AudioBuffer, pre_gain: float = 1.0) -> AudioBuffer:
         Input audio.
     pre_gain : float
         Linear gain applied before limiting, > 0. 1.0 = unity.
+    link : bool
+        Link the channel detectors (default); see :func:`compress`. No-op for
+        mono input.
 
     Returns
     -------
@@ -83,6 +138,8 @@ def limit(buf: AudioBuffer, pre_gain: float = 1.0) -> AudioBuffer:
         lm.init()
         return lm.process(x, pre_gain)
 
+    if link and buf.channels > 1:
+        return _apply_linked(buf, _process)
     return _process_per_channel(buf, _process)
 
 
@@ -171,6 +228,14 @@ def noise_gate(
     hold_ms : float
         Hold time in milliseconds (>= 0) after signal drops below threshold
         before the gate starts closing.
+
+    Notes
+    -----
+    The detector is always channel-linked: the envelope is the per-frame maximum
+    across channels and the resulting gain curve is applied to every channel, so
+    the gate opens and closes on all channels together and the stereo image is
+    preserved. There is no unlinked mode -- an unlinked gate would chatter one
+    channel independently of the other, which is essentially never wanted.
     """
     sr = buf.sample_rate
     threshold_lin = 10.0 ** (threshold_db / 20.0)

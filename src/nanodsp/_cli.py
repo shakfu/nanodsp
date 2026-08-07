@@ -19,6 +19,24 @@ from nanodsp.effects import filters, daisysp, dynamics, saturation, reverb, comp
 
 _REGISTRY: dict[str, tuple[Any, str]] = {}
 
+# Kind of each registered name -- see _classify(). Only PROCESSOR entries are
+# valid operands for `process -f` / `pipe -f` / `benchmark`.
+_KINDS: dict[str, str] = {}
+
+PROCESSOR = "processor"  # (buf, ...) -> AudioBuffer     -- chainable
+ANALYZER = "analyzer"  # (buf, ...) -> measurement     -- `analyze`
+SPECTRAL = "spectral"  # (spec, ...) -> ...            -- Spectrogram domain
+GENERATOR = "generator"  # (frames, ...) -> AudioBuffer  -- `synth`
+MULTI = "multi"  # needs a second buffer/operand
+
+# Human-readable suffix shown by `nanodsp list` for non-chainable entries.
+_KIND_NOTE: dict[str, str] = {
+    ANALYZER: "returns a measurement, not audio",
+    SPECTRAL: "operates on a Spectrogram",
+    GENERATOR: "generates audio; use `nanodsp synth`",
+    MULTI: "leading operand is not audio; Python API only",
+}
+
 # Categories group function names for the `list` command
 CATEGORIES: dict[str, list[str]] = {
     "filters": [],
@@ -76,18 +94,69 @@ _DYNAMICS_NAMES = {
 }
 
 
+def _classify(fn: Any) -> str | None:
+    """Classify a callable for CLI use, or return None if it is not a DSP entry point.
+
+    The registry is built by scanning module namespaces, which also picks up
+    imported classes and ``typing`` constructs (``Callable``, ``Literal``,
+    ``AudioBuffer``).  Admitting those made them appear in ``nanodsp list`` and
+    accepted by ``-f``, where they produced either a confusing traceback or --
+    worse -- a silently corrupt output file.  Only plain functions are admitted,
+    and each is classified by its signature so that ``-f`` can reject
+    non-chainable entries up front with a message naming the reason.
+
+    Classification is by first parameter name and return annotation, which is
+    reliable here because the package is fully annotated and follows a strict
+    ``buf``/``spec`` naming convention for its leading parameter.
+    """
+    if not inspect.isfunction(fn):
+        return None
+    try:
+        sig = inspect.signature(fn)
+    except (ValueError, TypeError):
+        return None
+    params = list(sig.parameters.values())
+    if not params:
+        return None
+
+    ret = sig.return_annotation
+    # `from __future__ import annotations` is in force package-wide, so
+    # annotations arrive as strings; fall back to the object for safety.
+    ret_str = ret if isinstance(ret, str) else getattr(ret, "__name__", str(ret))
+    returns_audio = "AudioBuffer" in ret_str
+
+    first = params[0].name
+    if first == "buf":
+        return PROCESSOR if returns_audio else ANALYZER
+    if first == "spec":
+        return SPECTRAL
+    if first == "frames":
+        return GENERATOR
+    # Leading operand is another buffer (crossfade, vocoder, mix_buffers, ...)
+    # or a non-audio operand (iir_design, lfo, irfft).
+    return MULTI
+
+
 def _register(module: Any, module_name: str, include: set[str] | None = None) -> None:
-    """Register public callables from a module."""
-    names = include or {
-        n
-        for n in dir(module)
-        if not n.startswith("_") and callable(getattr(module, n, None))
-    }
+    """Register public DSP functions from a module.
+
+    Without *include*, only functions actually defined in *module* are taken, so
+    that names re-exported via imports (e.g. ``stft`` imported into
+    ``analysis``) are registered once, under their defining module.
+    """
+    explicit = include is not None
+    names = include or {n for n in dir(module) if not n.startswith("_")}
     for name in sorted(names):
         fn = getattr(module, name, None)
-        if fn is None or not callable(fn):
+        if fn is None:
+            continue
+        kind = _classify(fn)
+        if kind is None:
+            continue
+        if not explicit and getattr(fn, "__module__", "") != module.__name__:
             continue
         _REGISTRY[name] = (fn, module_name)
+        _KINDS[name] = kind
         # Categorize
         if module_name == "effects":
             if name in _FILTER_NAMES:
@@ -128,12 +197,38 @@ def get_categories() -> dict[str, list[str]]:
     return CATEGORIES
 
 
+def get_kinds() -> dict[str, str]:
+    """Return the name -> kind map, building the registry on first call."""
+    _build_registry()
+    return _KINDS
+
+
 def get_function(name: str) -> tuple[Any, str]:
     """Look up a function by name. Raises KeyError if not found."""
     reg = get_registry()
     if name not in reg:
         raise KeyError(f"Unknown function: {name!r}")
     return reg[name]
+
+
+def get_processor(name: str) -> tuple[Any, str]:
+    """Look up a chainable ``(buf, ...) -> AudioBuffer`` function by name.
+
+    Raises
+    ------
+    KeyError
+        If *name* is not registered at all.
+    ValueError
+        If *name* is registered but is not chainable -- a generator, analyzer,
+        Spectrogram operator, or multi-operand function.  Chaining these was
+        previously accepted and produced either a traceback or a silently
+        corrupt output file.
+    """
+    fn, module_name = get_function(name)
+    kind = get_kinds().get(name, PROCESSOR)
+    if kind != PROCESSOR:
+        raise ValueError(f"{name!r} is not a chainable effect ({_KIND_NOTE[kind]})")
+    return fn, module_name
 
 
 def format_signature(fn: Any) -> str:
@@ -511,6 +606,43 @@ def _resolve_preset_fn(fn_str: str) -> Any:
     return fn
 
 
+def _split_overrides(
+    overrides: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """Split overrides into unscoped and per-step-scoped groups.
+
+    ``{"ratio": 6, "highpass.cutoff_hz": 40}`` becomes
+    ``({"ratio": 6}, {"highpass": {"cutoff_hz": 40}})``.
+    """
+    plain: dict[str, Any] = {}
+    scoped: dict[str, dict[str, Any]] = {}
+    for key, value in overrides.items():
+        step, sep, param = key.partition(".")
+        if sep:
+            scoped.setdefault(step, {})[param] = value
+        else:
+            plain[key] = value
+    return plain, scoped
+
+
+def _accepted_params(fn: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """Return the subset of *params* that *fn* actually accepts.
+
+    A chain step only sees an unscoped override if its own signature declares
+    that parameter.  Without this, any override applied to a chain preset was
+    forwarded to every step and the first one that did not accept it raised
+    ``TypeError`` -- which made overrides unusable on the 17 built-in presets
+    that are chains rather than single functions.
+    """
+    try:
+        sig = inspect.signature(fn)
+    except (ValueError, TypeError):
+        return dict(params)
+    if any(p.kind is p.VAR_KEYWORD for p in sig.parameters.values()):
+        return dict(params)
+    return {k: v for k, v in params.items() if k in sig.parameters}
+
+
 def apply_preset(name: str, buf: Any, overrides: dict[str, Any] | None = None) -> Any:
     """Apply a named preset to an AudioBuffer.
 
@@ -523,28 +655,65 @@ def apply_preset(name: str, buf: Any, overrides: dict[str, Any] | None = None) -
     overrides : dict or None
         Parameter overrides merged into preset defaults.
 
+        For a single-function preset every override is passed straight through.
+        For a chain preset an unscoped key such as ``{"ratio": 6.0}`` is applied
+        to each step whose signature accepts it, and is silently ignored by the
+        rest.  Because several steps in a chain can share a parameter name --
+        ``master_hiphop`` has a ``highpass`` and two shelving filters that all
+        take ``cutoff_hz`` -- an unscoped override may hit more steps than
+        intended.  Prefix the key with a step name to target one function:
+        ``{"highpass.cutoff_hz": 40.0}``.
+
     Returns
     -------
     AudioBuffer
+
+    Raises
+    ------
+    KeyError
+        If *name* is not a known preset, or a scoped override names a step that
+        is not in the chain.
     """
     presets = get_presets()
     if name not in presets:
         raise KeyError(f"Unknown preset: {name!r}")
     preset = presets[name]
-    overrides = overrides or {}
+    plain, scoped = _split_overrides(overrides or {})
 
     if "chain" in preset:
         # Chain of (module_name, func_name, params) steps (tuples or JSON lists)
+        step_names = [str(step[1]) for step in preset["chain"]]
+        unknown = sorted(set(scoped) - set(step_names))
+        if unknown:
+            raise KeyError(
+                f"Preset {name!r} has no step(s) {unknown}; "
+                f"available steps: {step_names}"
+            )
         result = buf
         for module_name, func_name, params in preset["chain"]:
             fn = _resolve_preset_fn(f"{module_name}.{func_name}")
-            merged = {**params, **overrides}
+            merged = {
+                **params,
+                **_accepted_params(fn, plain),
+                **scoped.get(func_name, {}),
+            }
             result = fn(result, **merged)
         return result
 
     if "fn" in preset:
         fn = _resolve_preset_fn(preset["fn"])
-        params = {**preset.get("defaults", {}), **overrides}
+        step_name = preset["fn"].split(".", 1)[-1]
+        unknown = sorted(set(scoped) - {step_name})
+        if unknown:
+            raise KeyError(
+                f"Preset {name!r} has no step(s) {unknown}; "
+                f"the only step is {step_name!r}"
+            )
+        params = {
+            **preset.get("defaults", {}),
+            **plain,
+            **scoped.get(step_name, {}),
+        }
         return fn(buf, **params)
 
     raise ValueError(f"Preset {name!r} must define 'fn' or 'chain'")
@@ -589,9 +758,9 @@ def parse_fx_token(token: str) -> tuple[str, dict[str, str]]:
 def coerce_value(value: str, target_type: type | None) -> Any:
     """Coerce a string value to the target type.
 
-    If target_type is None, tries float -> int -> str.
+    If target_type is None, tries bool -> int -> float -> str.
     """
-    if target_type is bool or target_type is (bool | None):
+    if target_type is bool:
         return value.lower() in ("true", "1", "yes", "on")
     if target_type is int:
         return int(value)
@@ -599,17 +768,62 @@ def coerce_value(value: str, target_type: type | None) -> Any:
         return float(value)
     if target_type is str:
         return value
-    # No target type: guess
+    # No target type: guess. Only unambiguous boolean spellings are recognised
+    # here -- "1"/"on"/"yes" stay as int/str, since a parameter with no default
+    # is as likely to be a mode name as a flag.
     if target_type is None:
+        lowered = value.lower()
+        if lowered in ("true", "false"):
+            return lowered == "true"
+        # Narrow to int only for plain integer literals. Testing `f == int(f)`
+        # instead accepted "1e3" and "inf", where int() then raised ValueError
+        # (silently yielding the raw string) or OverflowError (uncaught).
+        stripped = value.strip()
+        if stripped.lstrip("+-").isdigit():
+            return int(stripped)
         try:
-            f = float(value)
-            if f == int(f) and "." not in value:
-                return int(value)
-            return f
+            return float(value)
         except ValueError:
             return value
     # For complex types (like enums), return as string
     return value
+
+
+def missing_required_params(
+    fn: Any, supplied: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """Return required parameters of *fn* that *supplied* does not cover.
+
+    The leading ``buf`` operand comes from the file being processed, so it is
+    always excluded.  Used to reject an ``-f`` token before it reaches the DSP
+    layer, where the failure would otherwise be a bare ``TypeError``.
+
+    Returns
+    -------
+    (missing, buffer_operands)
+        *missing* is every unsatisfied required parameter; *buffer_operands* is
+        the subset annotated ``AudioBuffer``, which the ``-f`` grammar has no
+        way to express at all (``sidechain_compress``, ``vocoder``, ``convolve``
+        and friends are Python-API-only until it grows a file-operand syntax).
+    """
+    try:
+        sig = inspect.signature(fn)
+    except (ValueError, TypeError):
+        return [], []
+    missing: list[str] = []
+    buffers: list[str] = []
+    for i, (pname, param) in enumerate(sig.parameters.items()):
+        if i == 0 or pname in ("self", "cls"):
+            continue
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            continue
+        if param.default is inspect.Parameter.empty and pname not in supplied:
+            missing.append(pname)
+            ann = param.annotation
+            ann_str = ann if isinstance(ann, str) else getattr(ann, "__name__", "")
+            if "AudioBuffer" in ann_str:
+                buffers.append(pname)
+    return missing, buffers
 
 
 def coerce_params(fn: Any, raw_params: dict[str, str]) -> dict[str, Any]:

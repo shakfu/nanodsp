@@ -28,7 +28,12 @@ PitShift :: PitShift( void )
 
   window_.resize( delayLength_, 1 );
   StkFloat temp = TWO_PI / delayLength_;
-  for ( unsigned long i=0; i<=window_.size(); i++ )
+  // nanodsp local patch: upstream loops i <= size(), writing one StkFloat past
+  // the end of the window buffer. That corrupts the heap allocator's metadata,
+  // and the process then traps inside malloc at some later, unrelated
+  // allocation -- which made it look like an intermittent crash somewhere else
+  // entirely. Found with AddressSanitizer. See thirdparty/VERSIONS.md.
+  for ( unsigned long i=0; i<window_.size(); i++ )
     window_[i] = (cos( i * temp ) + 1.0) / 2.0;
 }
 

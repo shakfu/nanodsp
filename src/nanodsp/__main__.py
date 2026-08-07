@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import wave
 from pathlib import Path
@@ -150,33 +151,110 @@ def cmd_info(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+class _OrderedChainAction(argparse.Action):
+    """Append ``(kind, value)`` to a single shared destination.
+
+    ``-f`` and ``-p`` used to accumulate into two separate lists, and argparse
+    does not record how the two interleaved on the command line.  The chain was
+    therefore always built as "every effect, then every preset", silently
+    reordering what the user typed -- and for a chain of DSP operations order is
+    semantics, not presentation.  Routing both options through one destination
+    preserves argv order exactly.
+    """
+
+    def __init__(self, option_strings, dest, kind: str = "fx", **kwargs):
+        self._kind = kind
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        chain = getattr(namespace, self.dest, None)
+        if chain is None:
+            chain = []
+            setattr(namespace, self.dest, chain)
+        chain.append((self._kind, values))
+
+
+def _add_chain_options(parser: argparse.ArgumentParser) -> argparse.Action:
+    """Add the ``-f/--fx`` and ``-p/--preset`` pair, sharing one ordered dest."""
+    fx_action = parser.add_argument(
+        "-f",
+        "--fx",
+        dest="chain",
+        action=_OrderedChainAction,
+        kind="fx",
+        metavar="NAME:K=V,...",
+        help="Effect to apply (repeatable). Format: name:param=val,param=val",
+    )
+    _set_completer(fx_action, _function_completer)
+    _set_completer(
+        parser.add_argument(
+            "-p",
+            "--preset",
+            dest="chain",
+            action=_OrderedChainAction,
+            kind="preset",
+            metavar="NAME",
+            help="Apply a named preset (repeatable)",
+        ),
+        _preset_name_completer,
+    )
+    return fx_action
+
+
 def _build_chain(args: argparse.Namespace) -> list[dict]:
-    """Build a list of chain steps from --fx and --preset args.
+    """Build a list of chain steps from the ordered --fx/--preset list.
 
     Each step is a dict with keys:
       - "type": "fx" or "preset"
       - "name": function/preset name
       - "params": dict of coerced params (fx) or empty dict (preset)
       - "raw": original token string (fx only)
+
+    Steps appear in the order the options were given on the command line.
     """
     from nanodsp._cli import (
-        get_function,
+        get_processor,
         parse_fx_token,
         coerce_params,
+        missing_required_params,
     )
 
+    chain = getattr(args, "chain", None) or []
     steps: list[dict] = []
-    presets = _load_presets() if args.preset else {}
+    presets = _load_presets() if any(k == "preset" for k, _ in chain) else {}
 
-    if args.fx:
-        for token in args.fx:
-            name, raw_params = parse_fx_token(token)
+    for kind, value in chain:
+        if kind == "fx":
+            name, raw_params = parse_fx_token(value)
             try:
-                fn, mod = get_function(name)
+                fn, mod = get_processor(name)
             except KeyError:
                 print(f"Unknown function: {name!r}", file=sys.stderr)
                 sys.exit(1)
-            params = coerce_params(fn, raw_params)
+            except ValueError as e:
+                print(f"Cannot apply {name!r}: {e}", file=sys.stderr)
+                sys.exit(1)
+            try:
+                params = coerce_params(fn, raw_params)
+            except (ValueError, OverflowError) as e:
+                print(f"Bad parameter for {name!r}: {e}", file=sys.stderr)
+                sys.exit(1)
+            missing, buffers = missing_required_params(fn, params)
+            if buffers:
+                print(
+                    f"Cannot apply {name!r}: it needs a second audio buffer "
+                    f"({', '.join(buffers)}), which -f cannot supply. "
+                    "Use the Python API for this function.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if missing:
+                print(
+                    f"{name!r} requires parameter(s) {', '.join(missing)}; "
+                    f"pass them as {name}:{missing[0]}=...",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             steps.append(
                 {
                     "type": "fx",
@@ -184,20 +262,18 @@ def _build_chain(args: argparse.Namespace) -> list[dict]:
                     "module": mod,
                     "fn": fn,
                     "params": params,
-                    "raw": token,
+                    "raw": value,
                 }
             )
-
-    if args.preset:
-        for preset_name in args.preset:
-            if preset_name not in presets:
-                print(f"Unknown preset: {preset_name!r}", file=sys.stderr)
+        else:
+            if value not in presets:
+                print(f"Unknown preset: {value!r}", file=sys.stderr)
                 sys.exit(1)
             steps.append(
                 {
                     "type": "preset",
-                    "name": preset_name,
-                    "description": presets[preset_name].get("description", ""),
+                    "name": value,
+                    "description": presets[value].get("description", ""),
                 }
             )
 
@@ -270,6 +346,94 @@ def _resolve_output_path(
     sys.exit(1)
 
 
+def _peak_db(buf: AudioBuffer) -> float:
+    """Sample peak in dBFS, or -inf for digital silence."""
+    peak = float(np.max(np.abs(buf.data))) if buf.frames else 0.0
+    return 20.0 * np.log10(peak) if peak > 0 else float("-inf")
+
+
+def _format_levels(buf: AudioBuffer, label: str) -> str:
+    """One-line level summary. Includes true peak and loudness, which are not free."""
+    from nanodsp.analysis import loudness_lufs, true_peak_dbtp
+
+    lufs = loudness_lufs(buf)
+    lufs_str = f"{lufs:6.1f} LUFS" if not np.isinf(lufs) else "  -inf LUFS"
+    return (
+        f"  {label:7} peak {_peak_db(buf):6.1f} dBFS   "
+        f"true peak {true_peak_dbtp(buf):6.1f} dBTP   {lufs_str}"
+    )
+
+
+def _warn_if_clipped(
+    path: str, buf: AudioBuffer, bit_depth: int, args: argparse.Namespace
+) -> None:
+    """Warn when the result will clip on write.
+
+    Only checked for the integer formats: float output stores samples verbatim,
+    so a peak above full scale survives intact and is not a loss.
+
+    Only the sample peak is checked, not the true peak: this runs for every
+    output file including in batch mode, and a full 4x-oversampled true-peak
+    measurement is not worth paying for unconditionally. Integer WAV/FLAC output
+    clips at +/-1.0, so this is the failure that actually costs the user audio.
+    """
+    from nanodsp.io import _FLOAT_WRITE_DEPTHS
+
+    if _verbosity(args) == QUIET or not buf.frames:
+        return
+    if bit_depth in _FLOAT_WRITE_DEPTHS:
+        return
+    if float(np.max(np.abs(buf.data))) > 1.0:
+        print(
+            f"Warning: {path} clips (peak {_peak_db(buf):.1f} dBFS); "
+            f"{bit_depth}-bit output is limited to 0 dBFS. Add a limiter, "
+            "lower the gain, or write float with -b 32.",
+            file=sys.stderr,
+        )
+
+
+def _process_file(
+    input_path: str,
+    output_path: str,
+    steps: list[dict],
+    bit_depth: int,
+    args: argparse.Namespace,
+) -> None:
+    """Read, process and write one file.
+
+    Raises rather than exiting, so this is safe to call from a worker thread
+    where ``sys.exit`` would only unwind that thread and be reported as a
+    generic error.
+    """
+    from nanodsp.io import read, write
+
+    _log_verbose(args, f"  Reading {input_path}")
+    buf = read(input_path)
+    _log_verbose(
+        args,
+        f"  Loaded: {buf.channels}ch, {buf.frames} frames, {buf.sample_rate:.0f} Hz",
+    )
+    if getattr(args, "stats", False) or _verbosity(args) >= VERBOSE:
+        _log(args, _format_levels(buf, "input"), level=QUIET)
+
+    for step in steps:
+        if step["type"] == "fx":
+            _log_verbose(args, f"  Applying {step['name']}({step['params']})")
+            buf = step["fn"](buf, **step["params"])
+        else:
+            _log_verbose(args, f"  Applying preset {step['name']!r}")
+            from nanodsp._cli import apply_preset
+
+            buf = apply_preset(step["name"], buf)
+
+    if getattr(args, "stats", False) or _verbosity(args) >= VERBOSE:
+        _log(args, _format_levels(buf, "output"), level=QUIET)
+
+    _warn_if_clipped(output_path, buf, bit_depth, args)
+    _log_verbose(args, f"  Writing {output_path} ({bit_depth}-bit)")
+    write(output_path, buf, bit_depth=bit_depth)
+
+
 def cmd_process(args: argparse.Namespace) -> None:
     """Apply an effect chain to audio file(s)."""
     steps = _build_chain(args)
@@ -293,17 +457,82 @@ def cmd_process(args: argparse.Namespace) -> None:
         elif args.output:
             print(f"Output: {args.output}")
         print(f"Bit depth: {args.bit_depth or 16}")
+        if (args.jobs or 1) != 1:
+            print(f"Jobs: {_resolve_jobs(args.jobs)}")
         return
 
     bit_depth = args.bit_depth or 16
     inputs = args.input
+    jobs = min(_resolve_jobs(args.jobs), len(inputs))
 
-    for input_path in inputs:
-        output_path = _resolve_output_path(input_path, args.output, args.output_dir)
-        buf = _read_input(input_path, args)
-        buf = _apply_chain(buf, steps, args)
-        _write_output(output_path, buf, bit_depth=bit_depth, args=args)
-        _log(args, f"Wrote {output_path}")
+    targets = [
+        (p, _resolve_output_path(p, args.output, args.output_dir)) for p in inputs
+    ]
+
+    if jobs <= 1:
+        failures = 0
+        for input_path, output_path in targets:
+            try:
+                _process_file(input_path, output_path, steps, bit_depth, args)
+            except _IO_ERRORS + _DSP_ERRORS as e:
+                print(f"Error processing {input_path}: {e}", file=sys.stderr)
+                failures += 1
+                continue
+            _log(args, f"Wrote {output_path}")
+        if failures:
+            sys.exit(1)
+        return
+
+    _run_parallel(targets, steps, bit_depth, jobs, args)
+
+
+def _resolve_jobs(jobs: int | None) -> int:
+    """Resolve --jobs, where 0 means "one worker per CPU"."""
+    if jobs is None or jobs < 0:
+        return 1
+    if jobs == 0:
+        return os.cpu_count() or 1
+    return jobs
+
+
+def _run_parallel(
+    targets: list[tuple[str, str]],
+    steps: list[dict],
+    bit_depth: int,
+    jobs: int,
+    args: argparse.Namespace,
+) -> None:
+    """Process files concurrently.
+
+    Threads rather than processes: every C++ processing entry point releases the
+    GIL, so the DSP work genuinely runs in parallel, and threads avoid pickling
+    buffers across a process boundary. Each file is independent -- the chain
+    steps hold only configuration, and every effect builds its own DSP objects
+    per call -- so no state is shared between workers.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    _log_verbose(args, f"  Processing {len(targets)} files across {jobs} workers")
+    failures = 0
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = {
+            pool.submit(
+                _process_file, input_path, output_path, steps, bit_depth, args
+            ): (input_path, output_path)
+            for input_path, output_path in targets
+        }
+        for future in as_completed(futures):
+            input_path, output_path = futures[future]
+            try:
+                future.result()
+            except _IO_ERRORS + _DSP_ERRORS as e:
+                print(f"Error processing {input_path}: {e}", file=sys.stderr)
+                failures += 1
+                continue
+            _log(args, f"Wrote {output_path}")
+
+    if failures:
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -647,8 +876,11 @@ def cmd_preset(args: argparse.Namespace) -> None:
         if name not in presets:
             print(f"Unknown preset: {name!r}", file=sys.stderr)
             sys.exit(1)
+        from nanodsp._cli import coerce_value
+
         buf = _read_input(args.input, args)
-        # Collect overrides from extra --key=value args
+        # Collect overrides from extra KEY=VALUE args. Keys may be scoped to a
+        # single chain step as STEP.KEY (see _cli.apply_preset).
         overrides = {}
         if args.overrides:
             for ov in args.overrides:
@@ -659,12 +891,13 @@ def cmd_preset(args: argparse.Namespace) -> None:
                     )
                     sys.exit(1)
                 k, v = ov.split("=", 1)
-                # Try to coerce numeric
+                # Shared coercion with the -f path, so that ints stay ints and
+                # `flag=false` becomes False rather than the truthy string.
                 try:
-                    v_coerced: float | str = float(v)
-                except ValueError:
-                    v_coerced = v
-                overrides[k] = v_coerced
+                    overrides[k] = coerce_value(v, None)
+                except (ValueError, OverflowError) as e:
+                    print(f"Bad override {ov!r}: {e}", file=sys.stderr)
+                    sys.exit(1)
         try:
             buf = apply_preset(name, buf, overrides)
         except _DSP_ERRORS as e:
@@ -732,14 +965,17 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
     import statistics
     import time
 
-    from nanodsp._cli import get_function, parse_fx_token, coerce_params
+    from nanodsp._cli import get_processor, parse_fx_token, coerce_params
 
     token = args.function
     name, raw_params = parse_fx_token(token)
     try:
-        fn, _mod = get_function(name)
+        fn, _mod = get_processor(name)
     except KeyError:
         print(f"Unknown function: {name!r}", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Cannot benchmark {name!r}: {e}", file=sys.stderr)
         sys.exit(1)
 
     params = coerce_params(fn, raw_params)
@@ -817,33 +1053,43 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
 
 def cmd_list(args: argparse.Namespace) -> None:
     """List available functions by category."""
-    from nanodsp._cli import get_categories, get_registry, format_signature
+    from nanodsp._cli import (
+        get_categories,
+        get_registry,
+        get_kinds,
+        format_signature,
+        PROCESSOR,
+        _KIND_NOTE,
+    )
 
     cats = get_categories()
     reg = get_registry()
+    kinds = get_kinds()
     filter_cat = args.category if hasattr(args, "category") and args.category else None
+
+    def _print_category(cat: str, names: list[str]) -> None:
+        chainable = sum(1 for n in names if kinds.get(n, PROCESSOR) == PROCESSOR)
+        print(f"\n  {cat} ({len(names)} functions, {chainable} chainable):")
+        for name in sorted(names):
+            fn, _ = reg[name]
+            sig = format_signature(fn)
+            kind = kinds.get(name, PROCESSOR)
+            # Non-chainable entries stay listed -- they are reachable from the
+            # Python API and from `synth`/`analyze` -- but are marked so that
+            # `-f` is not attempted on them.
+            note = "" if kind == PROCESSOR else f"   [{_KIND_NOTE[kind]}]"
+            print(f"    {name}{sig}{note}")
 
     if filter_cat:
         if filter_cat not in cats:
             print(f"Unknown category: {filter_cat!r}")
             print(f"Available: {', '.join(sorted(cats))}")
             sys.exit(1)
-        names = cats[filter_cat]
-        print(f"\n  {filter_cat} ({len(names)} functions):")
-        for name in sorted(names):
-            fn, _ = reg[name]
-            sig = format_signature(fn)
-            print(f"    {name}{sig}")
+        _print_category(filter_cat, cats[filter_cat])
     else:
         for cat in sorted(cats):
-            names = cats[cat]
-            if not names:
-                continue
-            print(f"\n  {cat} ({len(names)} functions):")
-            for name in sorted(names):
-                fn, _ = reg[name]
-                sig = format_signature(fn)
-                print(f"    {name}{sig}")
+            if cats[cat]:
+                _print_category(cat, cats[cat])
     print()
 
 
@@ -955,38 +1201,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         help="Output directory for batch mode (files keep original names)",
     )
-    _set_completer(
-        p_proc.add_argument(
-            "-f",
-            "--fx",
-            action="append",
-            metavar="NAME:K=V,...",
-            help="Effect to apply (repeatable). Format: name:param=val,param=val",
-        ),
-        _function_completer,
-    )
-    _set_completer(
-        p_proc.add_argument(
-            "-p",
-            "--preset",
-            action="append",
-            metavar="NAME",
-            help="Apply a named preset (repeatable)",
-        ),
-        _preset_name_completer,
-    )
+    _add_chain_options(p_proc)
     p_proc.add_argument(
         "-b",
         "--bit-depth",
         type=int,
-        choices=[16, 24],
-        help="Output bit depth (default: 16)",
+        choices=[16, 24, 32],
+        help="Output bit depth: 16/24 = PCM, 32 = IEEE float (default: 16)",
     )
     p_proc.add_argument(
         "-n",
         "--dry-run",
         action="store_true",
         help="Show the processing chain without reading or writing files",
+    )
+    p_proc.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Process N files concurrently (0 = one per CPU). Batch mode only.",
+    )
+    p_proc.add_argument(
+        "--stats",
+        action="store_true",
+        help="Report peak, true peak and loudness before and after the chain",
     )
 
     # --- analyze ---
@@ -1026,8 +1266,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-b",
         "--bit-depth",
         type=int,
-        choices=[16, 24],
-        help="Output bit depth (default: 16)",
+        choices=[16, 24, 32],
+        help="Output bit depth: 16/24 = PCM, 32 = IEEE float (default: 16)",
     )
 
     # --- convert ---
@@ -1040,8 +1280,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-b",
         "--bit-depth",
         type=int,
-        choices=[16, 24],
-        help="Output bit depth (default: 16)",
+        choices=[16, 24, 32],
+        help="Output bit depth: 16/24 = PCM, 32 = IEEE float (default: 16)",
     )
 
     # --- preset ---
@@ -1075,8 +1315,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-b",
         "--bit-depth",
         type=int,
-        choices=[16, 24],
-        help="Output bit depth (default: 16)",
+        choices=[16, 24, 32],
+        help="Output bit depth: 16/24 = PCM, 32 = IEEE float (default: 16)",
     )
 
     # --- pipe ---
@@ -1084,26 +1324,13 @@ def build_parser() -> argparse.ArgumentParser:
         "pipe",
         help="Read WAV from stdin, apply effects, write WAV to stdout",
     )
-    p_pipe.add_argument(
-        "-f",
-        "--fx",
-        action="append",
-        metavar="NAME:K=V,...",
-        help="Effect to apply (repeatable). Format: name:param=val,param=val",
-    )
-    p_pipe.add_argument(
-        "-p",
-        "--preset",
-        action="append",
-        metavar="NAME",
-        help="Apply a named preset (repeatable)",
-    )
+    _add_chain_options(p_pipe)
     p_pipe.add_argument(
         "-b",
         "--bit-depth",
         type=int,
-        choices=[16, 24],
-        help="Output bit depth (default: 16)",
+        choices=[16, 24, 32],
+        help="Output bit depth: 16/24 = PCM, 32 = IEEE float (default: 16)",
     )
 
     # --- benchmark ---

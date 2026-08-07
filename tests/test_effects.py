@@ -1676,3 +1676,152 @@ class TestVocoder:
         )
         result = composed.vocoder(mod, carrier, n_bands=32)
         assert np.all(np.isfinite(result.data))
+
+
+# ---------------------------------------------------------------------------
+# Channel linking in dynamics processors
+# ---------------------------------------------------------------------------
+
+
+class TestChannelLinking:
+    """Stereo dynamics must share one gain curve unless explicitly unlinked.
+
+    Unlinked compression computes an independent detector per channel, so a
+    transient in one channel ducks only that channel and the stereo image
+    shifts. That was the previous (and only) behaviour, which is wrong for the
+    stereo programme material the mastering presets target.
+    """
+
+    SR = 48000.0
+
+    @classmethod
+    def _asymmetric_stereo(cls):
+        """Loud burst in L only, constant tone in R."""
+        n = int(cls.SR)
+        t = np.arange(n) / cls.SR
+        left = (
+            np.sin(2 * np.pi * 200 * t) * np.where((t > 0.2) & (t < 0.4), 1.0, 0.02)
+        ).astype(np.float32)
+        right = (np.sin(2 * np.pi * 200 * t) * 0.3).astype(np.float32)
+        return AudioBuffer(np.stack([left, right]), sample_rate=cls.SR), right
+
+    @staticmethod
+    def _gain(out_ch, src_ch, window):
+        return np.abs(out_ch[window]).max() / np.abs(src_ch[window]).max()
+
+    def _windows(self):
+        return (
+            slice(int(0.25 * self.SR), int(0.35 * self.SR)),  # during L burst
+            slice(int(0.70 * self.SR), int(0.90 * self.SR)),  # after it
+        )
+
+    def test_compress_linked_ducks_the_quiet_channel(self):
+        buf, right = self._asymmetric_stereo()
+        during, after = self._windows()
+        out = dynamics.compress(buf, ratio=8.0, threshold=-30.0, link=True)
+        g_during = self._gain(out.data[1], right, during)
+        g_after = self._gain(out.data[1], right, after)
+        assert g_during < g_after * 0.9, (
+            "R was not attenuated by the transient in L; detectors are not linked"
+        )
+
+    def test_compress_unlinked_leaves_the_quiet_channel_alone(self):
+        buf, right = self._asymmetric_stereo()
+        during, after = self._windows()
+        out = dynamics.compress(buf, ratio=8.0, threshold=-30.0, link=False)
+        assert self._gain(out.data[1], right, during) == pytest.approx(
+            self._gain(out.data[1], right, after), rel=1e-3
+        )
+
+    def test_limit_linked_ducks_the_quiet_channel(self):
+        buf, right = self._asymmetric_stereo()
+        during, after = self._windows()
+        out = dynamics.limit(buf, pre_gain=4.0, link=True)
+        assert (
+            self._gain(out.data[1], right, during)
+            < self._gain(out.data[1], right, after) * 0.9
+        )
+
+    def test_linking_preserves_inter_channel_ratio(self):
+        """The defining property: linked gain scales both channels identically."""
+        buf, _ = self._asymmetric_stereo()
+        _, after = self._windows()
+        out = dynamics.compress(buf, ratio=8.0, threshold=-30.0, link=True)
+        src = buf.data[0][after] / buf.data[1][after]
+        got = out.data[0][after] / out.data[1][after]
+        assert np.allclose(src, got, rtol=1e-4)
+
+    def test_unlinked_breaks_inter_channel_ratio(self):
+        buf, _ = self._asymmetric_stereo()
+        during = self._windows()[0]
+        out = dynamics.compress(buf, ratio=8.0, threshold=-30.0, link=False)
+        src = buf.data[0][during] / buf.data[1][during]
+        got = out.data[0][during] / out.data[1][during]
+        assert not np.allclose(src, got, rtol=1e-2)
+
+    @pytest.mark.parametrize(
+        "fn,kwargs",
+        [
+            (dynamics.compress, {"ratio": 4.0, "threshold": -20.0}),
+            (dynamics.limit, {"pre_gain": 2.0}),
+        ],
+    )
+    def test_mono_is_bit_exact_across_modes(self, fn, kwargs):
+        """link is a no-op for mono; it must not perturb existing results."""
+        mono = AudioBuffer.sine(220.0, frames=24000, sample_rate=self.SR)
+        assert np.array_equal(
+            fn(mono, link=True, **kwargs).data,
+            fn(mono, link=False, **kwargs).data,
+        )
+
+    @pytest.mark.parametrize(
+        "fn,kwargs",
+        [
+            (dynamics.compress, {"ratio": 4.0, "threshold": -20.0}),
+            (dynamics.limit, {"pre_gain": 2.0}),
+        ],
+    )
+    def test_linked_default(self, fn, kwargs):
+        buf, _ = self._asymmetric_stereo()
+        assert np.array_equal(fn(buf, **kwargs).data, fn(buf, link=True, **kwargs).data)
+
+    def test_metadata_preserved(self):
+        buf, _ = self._asymmetric_stereo()
+        out = dynamics.compress(buf, link=True)
+        assert out.sample_rate == buf.sample_rate
+        assert out.channels == buf.channels
+        assert out.frames == buf.frames
+        assert out.channel_layout == buf.channel_layout
+
+    def test_silence_is_stable(self):
+        """Zero detector must not produce NaN via divide-by-zero."""
+        silent = AudioBuffer.zeros(2, 4800, sample_rate=self.SR)
+        for out in (
+            dynamics.compress(silent, link=True),
+            dynamics.limit(silent, link=True),
+        ):
+            assert np.all(np.isfinite(out.data))
+
+    def test_noise_gate_is_linked(self):
+        """noise_gate already shares one envelope; pin that it stays that way.
+
+        R sits at -40 dBFS, below the -30 dB threshold, so it can only pass
+        while the burst in L holds the gate open -- which requires a shared
+        detector. An unlinked gate would mute R throughout.
+        """
+        n = int(self.SR)
+        t = np.arange(n) / self.SR
+        left = (
+            np.sin(2 * np.pi * 200 * t) * np.where((t > 0.2) & (t < 0.4), 1.0, 0.001)
+        ).astype(np.float32)
+        right = (np.sin(2 * np.pi * 200 * t) * 0.01).astype(np.float32)
+        buf = AudioBuffer(np.stack([left, right]), sample_rate=self.SR)
+        during, after = self._windows()
+
+        out = dynamics.noise_gate(buf, threshold_db=-30.0)
+        assert self._gain(out.data[1], right, during) > 0.5, (
+            "R was gated shut during the burst in L; detectors are not linked"
+        )
+        assert self._gain(out.data[1], right, after) < 0.1, (
+            "gate never closed on the quiet passage"
+        )

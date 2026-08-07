@@ -4,7 +4,7 @@
 # This Makefile wraps common build commands for convenience.
 # The actual build is handled by scikit-build-core via pyproject.toml
 
-.PHONY: all sync build rebuild test lint format typecheck qa clean \
+.PHONY: all sync build rebuild test lint format typecheck qa asan clean \
         distclean wheel sdist dist check publish-test publish upgrade \
         coverage coverage-html docs docs-serve docs-deploy release \
         help demos
@@ -80,6 +80,33 @@ publish: check
 upgrade:
 	@uv lock --upgrade
 	@uv sync
+
+# Rebuild with AddressSanitizer and run the suite under it.
+#
+# Memory errors in the vendored C++ are silent from Python: an out-of-bounds
+# write corrupts the allocator's metadata and the process traps later, inside an
+# unrelated allocation, so the reported location is meaningless. This is the
+# only way to find them. Slow, and it leaves an instrumented build installed --
+# run `make build` afterwards to restore a normal one.
+ASAN_FLAGS = -fsanitize=address -fno-omit-frame-pointer -g
+asan:
+	@echo "Building with AddressSanitizer..."
+	@SKBUILD_CMAKE_ARGS="-DCMAKE_CXX_FLAGS=$(ASAN_FLAGS);-DCMAKE_C_FLAGS=$(ASAN_FLAGS);-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address" \
+		uv sync --reinstall-package nanodsp
+	@rm -f /tmp/nanodsp-asan.*
+	@echo "Running tests under ASan (reports go to /tmp/nanodsp-asan.*)..."
+	@DYLD_INSERT_LIBRARIES="$$(clang -print-file-name=libclang_rt.asan_osx_dynamic.dylib)" \
+		ASAN_OPTIONS="detect_leaks=0:log_path=/tmp/nanodsp-asan:halt_on_error=0" \
+		./.venv/bin/python -m pytest tests/ -q || true
+	@if ls /tmp/nanodsp-asan.* >/dev/null 2>&1; then \
+		echo "ASan reported errors:"; \
+		grep -h "ERROR: AddressSanitizer" /tmp/nanodsp-asan.* | sort | uniq -c; \
+		echo "Full reports: /tmp/nanodsp-asan.*"; \
+		exit 1; \
+	else \
+		echo "ASan: clean"; \
+	fi
+	@echo "Run 'make build' to restore a normal (non-instrumented) build."
 
 # Run tests with coverage
 coverage:
@@ -161,6 +188,7 @@ help:
 	@echo "  publish-test - Publish to TestPyPI"
 	@echo "  publish      - Publish to PyPI"
 	@echo "  upgrade      - Upgrade all dependencies"
+	@echo "  asan         - Rebuild with AddressSanitizer and run the suite under it"
 	@echo "  coverage     - Run tests with coverage"
 	@echo "  coverage-html- Generate HTML coverage report"
 	@echo "  docs         - Build documentation with MkDocs"

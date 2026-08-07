@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0]
+
+This release is dominated by correctness work following a full project review.
+Several entries change existing behaviour; those are marked **Behaviour change**
+and are listed first under Changed -- hence the minor bump rather than a patch
+release. Four are worth checking before upgrading: `AudioBuffer` no longer
+aliases the array it is constructed from, `compress` and `limit` are now
+stereo-linked by default, the CLI effect chain runs in the order given rather
+than effects-then-presets, and `-f` now rejects anything that is not a chainable
+effect.
+
+### Added
+
+- **32/64-bit IEEE float WAV, read and write** (`nanodsp.io`) -- WAV is now parsed from RIFF chunks directly instead of through the stdlib `wave` module, which accepts only `WAVE_FORMAT_PCM` and rejects everything else outright. That excluded two very common cases: 32-bit float WAV (what ffmpeg, Audacity and most DAWs write from a float pipeline) and `WAVE_FORMAT_EXTENSIBLE`, which many writers emit for anything above two channels or 16 bits. `wave` also cannot *write* float at all. `bit_depth` now accepts 32 and 64 for IEEE float alongside 16 and 24 for PCM; float output is written verbatim and is not clipped, so material above full scale survives a gain stage intact. Unknown codecs now name themselves in the error (`Unsupported WAV encoding: IMA ADPCM`) and RF64/BW64 files are rejected with a clear message rather than a parse failure. No new dependency: the parser is about 120 lines of Python.
+
+- **Parallel batch processing** (`nanodsp process -j/--jobs N`, `0` = one worker per CPU) -- every C++ processing entry point releases the GIL, so batch work scales across cores using threads, with no multiprocessing and no pickling of buffers. Measured 2.67x end-to-end on 8 cores for 8 x 20 s stereo files through a reverb/compress/saturate chain (closer to 3.9x on the DSP alone, once fixed interpreter startup is subtracted). Output is verified bit-identical to serial. A failure in one file now reports and continues, exiting non-zero at the end, instead of aborting the batch.
+
+- **Level reporting and clipping detection in the CLI** -- `nanodsp process --stats` reports peak, true peak and integrated loudness before and after the chain. Independently, a warning is now printed whenever integer output would exceed full scale, which is the most common way a chain silently costs the user audio. The warning is suppressed for float output, where the peak survives intact, and under `-q`. Only the sample peak is checked, not the true peak: this runs for every file in a batch, and a 4x-oversampled true-peak measurement is not worth paying for unconditionally.
+
+- **Step-scoped preset overrides** -- an override key may now name a single chain step, as in `preset apply master_hiphop in.wav out.wav highpass.cutoff_hz=40`. Several steps in one chain can share a parameter name (`master_hiphop` has a highpass and two shelving filters that all take `cutoff_hz`), so an unscoped override can reach more steps than intended; the scoped form removes the ambiguity. Naming a step that is not in the chain is an error rather than a silent no-op.
+
+- **Reproducible synthesis** -- a `seed` parameter on the 11 synthesis functions that draw from the C library `rand()` (`synth_note`, `synth_sequence`, `pluck`, `drip`, `string_voice`, `hihat`, `analog_snare_drum`, `synthetic_snare_drum`, `synthetic_bass_drum`, `clocked_noise`, `dust`), plus `nanodsp._core.stk.set_random_seed()` underneath. These are now pure functions of their arguments, like the rest of the library; pass a different seed for a different variation. See the STK seeding fix below for why they were not.
+
+- **`copy` parameter on `AudioBuffer`** -- `AudioBuffer(data, copy=False)` hands over an array the caller no longer references, avoiding one full-buffer copy. Used internally by the per-channel effects driver, so the safer default costs nothing on the effects path.
+
+- **`make asan`** -- rebuilds the extension with AddressSanitizer and runs the suite under it. Memory errors in the vendored C++ are invisible from Python and invisible to the test suite: an out-of-bounds write corrupts the allocator's metadata and the process traps later, inside an unrelated allocation, so the reported location is meaningless. This target is the only reliable way to find them, and is worth running after any vendored-library upgrade. (macOS strips `DYLD_INSERT_LIBRARIES` across `uv run`, so the target invokes the venv interpreter directly.)
+
+- **Four contract-style test modules** -- `tests/test_golden.py` pins the numeric output of 65 cases covering every backend, so a vendored library that starts producing different numbers is caught even when it still satisfies every property the suite asserts; `tests/test_channel_contract.py` pins channel-count, length and sample-rate invariants as explicit allow-lists; `tests/test_stk_determinism.py` pins reproducibility of the `rand()`-drawing voices; `tests/test_docs.py` checks documented counts against reality. The suite went from 1699 to 2326 tests at ~94.5% coverage.
+
+### Changed
+
+- **Behaviour change: `compress` and `limit` are now channel-linked by default** (`link=True`) -- one gain curve is computed from the per-frame maximum across channels and applied to all of them, preserving inter-channel ratios. Previously each channel ran its own detector, so a transient in one channel ducked only that channel and the stereo image shifted -- wrong for the stereo programme material the mastering presets target. `link=False` restores the previous behaviour for per-channel utility work. Mono output is bit-identical in both modes. (`noise_gate` was already linked and is unchanged.)
+
+- **Behaviour change: `AudioBuffer` no longer aliases the array it is given** -- the constructor previously adopted a contiguous float32 ndarray as-is while copying anything that needed conversion, so whether writes through the buffer reached the caller's array depended on that array's dtype and memory layout -- not a distinction callers can reasonably track. It now copies by default; pass `copy=False` for the hand-over case. `slice()` had the matching problem (a frame slice of a mono buffer is contiguous and was adopted, the same slice of a stereo buffer was not and got copied) and now never shares storage; use `buf.data[:, start:end]` for a genuine view. Measured cost on the effects path: none (2.60 ms vs 2.61 ms for a 10 s stereo lowpass).
+
+- **Behaviour change: the CLI effect chain now runs in the order given** -- `-f` and `-p` accumulated into two separate lists, and argparse does not record how they interleaved, so the chain was always built as "every effect, then every preset", silently reordering what the user typed. For a chain of DSP operations order is semantics: filter-then-saturate and saturate-then-filter are different effects.
+
+- **Behaviour change: `-f` accepts only chainable effects** -- the CLI function registry collected everything in a module that was callable and not underscore-prefixed, which admitted imported typing constructs and classes (`Callable`, `Literal`, `AudioBuffer`, `Spectrogram`) as "DSP functions". Registration now admits only functions defined in the module being scanned and classifies each by signature. `-f` accepts the 110 chainable `(buf, ...) -> AudioBuffer` processors and rejects the rest by name and reason; generators, analyzers and Spectrogram-domain operators remain listed by `nanodsp list`, annotated with why they are not chainable. The registry went from 174 entries to 168.
+
+- **WAV quantisation now rounds to nearest, with matched encode/decode scales** -- the encoder truncated toward zero (`astype`) and scaled by `2**(n-1) - 1` while the decoder divided by `2**(n-1)`. Rounding alone was not enough: the scale mismatch leaves a residual gain error of up to a full LSB near full scale, which swamps the rounding it was meant to protect. With both fixed, worst-case 16-bit round-trip error drops from 1.889 LSB to exactly 0.500 (the theoretical optimum), mean error from -0.008 LSB to under 0.001, and every exactly representable level round-trips bit-exactly. Integer dtypes are also now spelled little-endian explicitly, since WAV is little-endian regardless of host byte order.
+
+- **`-b/--bit-depth` accepts 32** across `process`, `synth`, `convert`, `preset apply` and `pipe`, selecting IEEE float output.
+
+- **Channel-count behaviour documented** -- `reverb` returns 2 channels whatever it is given, mono-sums the input before the FDN, and folds more than two channels to a stereo pair; none of that was documented, and a chain that assumes channel count is invariant changes shape there. Writing the check found the behaviour was not unique to `reverb`: eleven processors widen mono to stereo and four fold above two channels down. All are now documented and pinned.
+
+- **CLI override coercion unified** -- `preset apply` used a weaker float-or-string coercion than `-f`, so `flag=false` became the truthy string `"false"`. Both paths now share one implementation.
+
+### Fixed
+
+- **Two heap buffer overflows in vendored STK** -- an intermittent crash (SIGTRAP, shell exit 133) during an ordinary test run turned out to be the allocator trapping in its own free list while servicing an unrelated `new`. That is the signature of memory corruption: the crash surfaces wherever the next allocation lands, so the reported location is meaningless and moves between runs. AddressSanitizer located two upstream bugs: `PitShift::PitShift()` looped `i <= window_.size()` and wrote one `StkFloat` past a 5000-element buffer (fires on construction alone), and `LentPitShift::tick()` read `dpt[delay_]` after the pitch-tracking loop had incremented `delay_` one past the end of the array (input-dependent, so it fired only for some signals). Both are patched in the vendored source and recorded in `thirdparty/VERSIONS.md`; the suite is now ASan-clean. Neither is detectable from Python, and the suite passed 2326 tests while the corruption was happening.
+
+- **Uninitialised read in the DaisySP modulation effects** -- `ChorusEngine::Init`, `Flanger::Init` and `PhaserEngine::Init` each call `SetLfoFreq`, which reads `lfo_freq_` to decide the LFO direction before anything has assigned it. An indeterminate negative value latches a reversed LFO for the object's entire lifetime, and every later `SetLfoFreq` preserves that sign, so no wrapper can correct it after construction. Patched in the vendored source (one line each) and recorded in `thirdparty/VERSIONS.md`; chorus, flanger and phaser are pinned in the golden corpus.
+
+- **STK seeded its noise from the wall clock** -- `Noise::setSeed` called `srand(time(NULL))` for the default seed, which is every `Noise` inside every STK voice. STK renders therefore differed on every run landing in a different wall-clock second, with no way to pin them from Python. Worse, `srand()` is process-global and DaisySP draws from the same `rand()` stream, so merely constructing an STK instrument silently randomised unrelated DaisySP generators (`pluck`, `drip`, `dust`, `clocked_noise`, `string_voice`, `hihat`, the snare and bass drums). The vendored `setSeed` no longer touches `rand()` for the default seed, and the affected functions seed it explicitly on entry.
+
+- **Preset overrides crashed on chain presets** -- an override was merged into every step of a chain, so the first step that did not accept it raised `TypeError`. This made overrides unusable on 17 of the 30 built-in presets, despite being documented. Overrides are now filtered per step by signature.
+
+- **`-f` on a non-effect silently corrupted the output or crashed** -- `-f stft` wrote a garbage file and exited 0 (a `ComplexWarning` was the only hint), and `-f loudness_lufs` produced a raw `AttributeError` traceback. Both are now rejected before any processing, naming the reason. `-f` on a processor needing a second buffer (`sidechain_compress`, `eq_match`, `convolve`) now says so instead of failing deep in the DSP layer.
+
+- **Parameter coercion mishandled two common inputs** -- for parameters with no default, `1e3` silently became the string `"1e3"` (`int("1e3")` raises, and the resulting `ValueError` was swallowed) and `inf` raised an uncaught `OverflowError`. Integer narrowing is now guarded by a digit test.
+
+- **`numpy` copy protocol** -- `AudioBuffer.__array__` ignored the `copy` argument numpy passes, so `np.array(buf)` could return shared storage despite the caller asking for a copy. It is now honoured, and an impossible `copy=False` conversion raises as numpy's contract requires.
+
+- **Stale and incorrect documentation counts** -- the README claimed 1522 tests and 18 demo scripts (actual: 1699 and 20 at the time), and `docs/index.md` claimed 12 C++ backends while its table listed 11, having lost the signalsmith-stretch row. All corrected, and `tests/test_docs.py` now fails when a documented count stops matching reality.
+
 ## [0.1.9]
 
 ### Added

@@ -15,6 +15,9 @@ void Flanger::Init(float sample_rate)
     SetDelay(.75);
 
     lfo_phase_ = 0.f;
+    // nanodsp local patch: see the note in chorus.cpp -- SetLfoFreq reads
+    // lfo_freq_ before it is ever assigned. See thirdparty/VERSIONS.md.
+    lfo_freq_ = 0.f;
     SetLfoFreq(.3);
     SetLfoDepth(.9);
 }

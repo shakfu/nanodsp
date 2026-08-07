@@ -74,6 +74,13 @@ nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=1,semitones=
 # Batch mode -- process multiple files to a directory
 nanodsp process *.wav -O out/ -f lowpass:cutoff_hz=2000
 
+# Batch in parallel (-j 0 = one worker per CPU). All C++ processing releases
+# the GIL, so this scales across cores without multiprocessing.
+nanodsp process *.wav -O out/ -f reverb:preset=hall -j 0
+
+# Report peak / true peak / loudness before and after the chain
+nanodsp process input.wav -o out.wav --stats -f compress:ratio=4
+
 # Dry run -- show chain without reading/writing files
 nanodsp process input.wav -n -f highpass:cutoff_hz=80 -f compress:ratio=4
 
@@ -103,6 +110,11 @@ nanodsp preset list
 nanodsp preset list spatial
 nanodsp preset info master
 nanodsp preset apply master input.wav output.wav target_lufs=-16
+
+# An override reaches every step of a chain preset whose signature accepts it.
+# Prefix with a step name to target one function -- master_hiphop has a
+# highpass and two shelves that all take cutoff_hz.
+nanodsp preset apply master_hiphop in.wav out.wav highpass.cutoff_hz=40
 
 # Pipe (stdin/stdout streaming)
 cat input.wav | nanodsp pipe -f lowpass:cutoff_hz=1000 > output.wav
@@ -193,8 +205,11 @@ The central data type. A 2D float32 array with shape `[channels, frames]` plus m
 ```python
 from nanodsp import AudioBuffer
 
-# Construction
+# Construction. The buffer owns its samples: the constructor copies what it is
+# given, so later writes through the buffer never reach the caller's array.
+# Pass copy=False to hand over an array nothing else references.
 buf = AudioBuffer(np.zeros((2, 44100), dtype=np.float32), sample_rate=44100)
+buf = AudioBuffer(owned_array, sample_rate=44100, copy=False)   # no copy
 buf = AudioBuffer.from_file("input.wav")       # read WAV/FLAC
 buf = AudioBuffer.sine(440.0, channels=1, frames=44100, sample_rate=44100)
 buf = AudioBuffer.noise(channels=2, frames=44100, sample_rate=44100)
@@ -223,6 +238,10 @@ buf.gain_db(-6.0)    # apply dB gain
 buf.write("output.wav")                # write WAV/FLAC (detected by extension)
 buf.write("output.flac", bit_depth=24)
 
+# Slicing. slice() returns an independent buffer; index .data for a view.
+buf.slice(1000, 2000)                  # frames 1000..2000, independent copy
+buf.data[:, 1000:2000]                 # zero-copy numpy view
+
 # Pipeline (DSP functions are imported from their submodule)
 from nanodsp.effects.filters import lowpass
 buf.pipe(lowpass, cutoff_hz=1000.0)
@@ -230,7 +249,18 @@ buf.pipe(lowpass, cutoff_hz=1000.0)
 
 ### `nanodsp.io` -- Audio file I/O
 
-Read and write WAV (8/16/24/32-bit PCM) and FLAC (16/24-bit) files. Zero external dependencies for WAV (uses stdlib `wave`); FLAC uses the CHOC codec.
+Read and write WAV and FLAC with zero external dependencies (WAV is parsed and written directly; FLAC uses the CHOC codec).
+
+| Format | Read | Write |
+|--------|------|-------|
+| WAV PCM | 8/16/24/32-bit | 16/24-bit |
+| WAV IEEE float | 32/64-bit | 32/64-bit |
+| WAV extensible | wrapping any of the above | -- |
+| FLAC | 16/24-bit | 16/24-bit |
+
+`bit_depth` selects the encoding on write: 16 and 24 are signed PCM (clipped to
+[-1, 1] and rounded to nearest), while 32 and 64 are IEEE float, written
+verbatim so values above full scale survive a gain stage intact.
 
 ```python
 from nanodsp import io
@@ -432,6 +462,13 @@ from nanodsp.effects.dynamics import (
 compress(buf, threshold=-20.0, ratio=4.0, attack=0.01, release=0.1)
 limit(buf, pre_gain=2.0)
 noise_gate(buf, threshold_db=-40.0)
+
+# Stereo detectors are linked by default: one gain curve derived from the
+# per-frame maximum across channels, applied to all of them, so the stereo
+# image is preserved. link=False gives each channel its own detector, which
+# is occasionally wanted for per-channel utility work. No-op for mono.
+compress(buf, ratio=4.0, link=False)
+limit(buf, pre_gain=2.0, link=False)
 agc(buf, target_level=1.0, max_gain_db=60.0)
 sidechain_compress(buf, sidechain, ratio=4.0, threshold=-20.0)   # sidechain is an AudioBuffer
 transient_shape(buf, attack_gain=1.5, sustain_gain=0.8)
@@ -600,6 +637,13 @@ synthesis.bl_oscillator(frames=44100, freq=440.0, waveform="saw")
 synthesis.white_noise(frames=44100, amp=0.5)
 synthesis.clocked_noise(freq=1000.0, frames=44100)
 synthesis.dust(density=100.0, frames=44100)
+
+# The voices that draw on the shared C rand() stream -- the STK instruments,
+# the drums, pluck, drip, string_voice, clocked_noise and dust -- take a seed
+# and are pure functions of their arguments. Pass a different seed for a
+# different variation.
+synthesis.dust(density=100.0, frames=44100, seed=7)
+synthesis.synth_note("clarinet", freq=440.0, duration=1.0, seed=7)
 
 # Drums
 synthesis.analog_bass_drum(freq=60.0, frames=44100)
@@ -855,7 +899,9 @@ Cost estimates assume a typical stereo buffer at 44.1 kHz. Actual times vary wit
 
 ### GIL release
 
-All C++ processing functions release the Python GIL during computation. This means you can process multiple `AudioBuffer` objects in parallel using `threading` or `concurrent.futures.ThreadPoolExecutor` and achieve true multi-core parallelism -- no need for `multiprocessing`.
+All C++ block-processing functions release the Python GIL during computation. This means you can process multiple `AudioBuffer` objects in parallel using `threading` or `concurrent.futures.ThreadPoolExecutor` and achieve true multi-core parallelism -- no need for `multiprocessing`, and no pickling of buffers across a process boundary.
+
+The CLI uses this for batch work: `nanodsp process *.wav -O out/ -j 0` runs one worker per CPU. Measured 2.67x end-to-end on 8 cores for 8 x 20 s stereo files through a reverb/compress/saturate chain, and closer to 3.9x on the DSP alone once fixed interpreter startup is subtracted. Each file is independent -- effects build their own DSP objects per call and hold no shared state -- so the same pattern is safe in your own code.
 
 ### Benchmarking
 
@@ -871,7 +917,7 @@ This reports iterations per second, mean time per call, and buffer throughput in
 
 ## Demos
 
-18 demo scripts in `demos/` showcase the full API surface. Run them all at once:
+20 demo scripts in `demos/` showcase the full API surface. Run them all at once:
 
 ```bash
 make demos                              # uses demos/s01.wav
@@ -930,10 +976,33 @@ options:
 
 ```bash
 make build    # rebuild extension after C++ changes
-make test     # run 1522 tests
-make demos    # run all 18 demo scripts
+make test     # run 2326 tests
+make demos    # run all 20 demo scripts
 make qa       # test + lint + typecheck + format
 make coverage # tests with coverage report
+make asan     # rebuild with AddressSanitizer and run the suite under it
+```
+
+`make asan` is worth running after any vendored-library upgrade. Memory errors
+in the C++ layer are invisible from Python and invisible to the test suite: an
+out-of-bounds write corrupts the allocator's metadata and the process traps
+later, inside an unrelated allocation, so the reported crash location is
+meaningless. Two such bugs in vendored STK were found this way. It leaves an
+instrumented build installed -- run `make build` afterwards to restore a normal
+one.
+
+### Regression fixtures
+
+`tests/GOLDEN.json` pins the numeric output of 65 cases across every backend, so
+a vendored library that starts producing different numbers is caught even when
+it still satisfies every property the suite asserts. It is a committed fixture,
+not a build artefact. Comparison is numeric with a tolerance rather than by
+hash, since an exact hash of float output is not portable across compilers or
+CPUs. When a change to the output is intended, regenerate and review the diff as
+part of the same commit:
+
+```bash
+uv run python tests/test_golden.py --update
 ```
 
 ## License

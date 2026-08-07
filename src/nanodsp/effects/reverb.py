@@ -75,6 +75,29 @@ def reverb(
         Lowpass filtering in feedback, 0.0--1.0 (0.0 = bright, 1.0 = dark).
     pre_delay_ms : float
         Pre-delay in milliseconds before reverb onset, >= 0.
+
+    Returns
+    -------
+    AudioBuffer
+        Always 2-channel, whatever the input channel count, with
+        ``channel_layout='stereo'``.
+
+    Notes
+    -----
+    **This function does not preserve the channel count**, unlike the rest of
+    the effects API.  Mono input is widened to stereo and anything above two
+    channels is folded down to a stereo pair (first half of the channels to the
+    left, second half to the right).  A chain that assumes channel count is
+    invariant will change shape here.
+
+    The wet path is also mono: the input is summed to mono before entering the
+    FDN, which then emits a decorrelated stereo pair.  Only the dry path
+    carries the input's stereo image, so at ``mix=1.0`` the original stereo
+    content is gone.  This follows the underlying madronalib ``FDN8``, which is
+    a mono-in/stereo-out design; true-stereo reverb would need two decorrelated
+    FDN instances.
+
+    Frame count and sample rate are preserved.
     """
     if preset not in _REVERB_PRESETS:
         raise ValueError(
@@ -240,6 +263,13 @@ def stk_reverb(
         Damping (FreeVerb only), 0.0--1.0.
     t60 : float
         Reverberation time in seconds (JCRev, NRev, PRCRev), > 0. Typical: 0.1--10.
+
+    Returns
+    -------
+    AudioBuffer
+        Always 2-channel: the STK reverbs are mono-in/stereo-out, so mono input
+        is widened and more than two channels are folded to a stereo pair.
+        Frame count and sample rate are preserved.
     """
     _stk.set_sample_rate(buf.sample_rate)
 
@@ -295,7 +325,9 @@ def stk_chorus(
 ) -> AudioBuffer:
     """Apply STK Chorus effect.
 
-    Returns stereo output from mono or stereo input.
+    Always returns 2-channel output: the STK chorus is mono-in/stereo-out, so
+    mono input is widened and more than two channels are folded to a stereo
+    pair. Frame count and sample rate are preserved.
 
     Parameters
     ----------

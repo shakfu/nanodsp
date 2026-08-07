@@ -25,6 +25,18 @@ class AudioBuffer:
         E.g. ``'mono'``, ``'stereo'``.  Inferred from channel count when *None*.
     label : str or None
         Free-form label carried as metadata.
+    copy : bool
+        Copy *data* into storage the buffer owns (the default).  Pass ``False``
+        only when the caller is handing over an array nothing else references,
+        which avoids one full-buffer copy.
+
+        The default is ``True`` because the alternative silently aliases: a
+        contiguous float32 array passed in would otherwise be adopted as-is, so
+        later writes through the buffer would mutate the caller's array while an
+        identical call with a non-contiguous or non-float32 array -- which has
+        to be converted -- would not.  Whether a call aliased depended on the
+        dtype and memory layout of the argument, which is not a distinction
+        callers can reasonably track.
 
     Raises
     ------
@@ -40,9 +52,10 @@ class AudioBuffer:
         sample_rate: float = 48000.0,
         channel_layout: str | None = None,
         label: str | None = None,
+        copy: bool = True,
     ) -> None:
         if isinstance(data, AudioBuffer):
-            arr = data._data.copy()
+            arr = data._data
         else:
             arr = np.asarray(data, dtype=np.float32)
 
@@ -51,11 +64,18 @@ class AudioBuffer:
         elif arr.ndim != 2:
             raise ValueError(f"AudioBuffer requires 1D or 2D data, got {arr.ndim}D")
 
-        # Ensure contiguous float32
+        # Ensure contiguous float32. Either conversion already produces storage
+        # nothing else holds, so an explicit copy afterwards would be redundant.
+        converted = False
         if arr.dtype != np.float32:
             arr = arr.astype(np.float32)
+            converted = True
         if not arr.flags["C_CONTIGUOUS"]:
             arr = np.ascontiguousarray(arr)
+            converted = True
+
+        if copy and not converted:
+            arr = arr.copy()
 
         sr = float(sample_rate)
         if sr <= 0:
@@ -163,9 +183,24 @@ class AudioBuffer:
     def __array__(
         self, dtype: np.dtype | None = None, copy: bool | None = None
     ) -> np.ndarray:
-        if dtype is None:
-            return self._data
-        return self._data.astype(dtype)
+        """numpy conversion protocol.
+
+        *copy* is honoured rather than ignored: numpy passes ``True`` when the
+        caller asked for a copy (``np.array(buf)``) and ``False`` when a copy is
+        forbidden (``np.asarray(buf, copy=False)``), and returning shared
+        storage in the first case would defeat the request.
+        """
+        if dtype is not None and np.dtype(dtype) != self._data.dtype:
+            # astype always allocates, satisfying copy=True and copy=None alike.
+            if copy is False:
+                raise ValueError(
+                    "cannot avoid a copy while converting AudioBuffer "
+                    f"from {self._data.dtype} to {np.dtype(dtype)}"
+                )
+            return self._data.astype(dtype)
+        if copy:
+            return self._data.copy()
+        return self._data
 
     if __import__("sys").version_info >= (3, 12):
 
@@ -344,7 +379,17 @@ class AudioBuffer:
     # ------------------------------------------------------------------
 
     def slice(self, start_frame: int, end_frame: int) -> AudioBuffer:
-        """Return a view (no copy) of frames ``[start_frame:end_frame]``."""
+        """Return frames ``[start_frame:end_frame]`` as an independent buffer.
+
+        The result never shares storage with this buffer.  It previously did so
+        for mono and not for multi-channel input -- a frame slice of a
+        single-row array is still contiguous and was adopted as-is, while the
+        same slice of a two-row array is not and had to be copied -- so whether
+        writes propagated back depended on the channel count.
+
+        For a genuine view, index the underlying array directly:
+        ``buf.data[:, start:end]``.
+        """
         return AudioBuffer(
             self._data[:, start_frame:end_frame],
             sample_rate=self._sample_rate,

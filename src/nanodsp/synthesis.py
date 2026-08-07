@@ -24,6 +24,32 @@ from nanodsp._core import fxdsp as _fxdsp
 
 
 # ---------------------------------------------------------------------------
+# Deterministic randomness
+# ---------------------------------------------------------------------------
+
+# Several STK voices and DaisySP generators draw from the C library rand(),
+# which is one shared, process-global stream. Left alone it advances across
+# calls, so the same call twice returns different audio and the result depends
+# on whatever else ran first. Every other function in nanodsp is a pure function
+# of its arguments; these seed the stream on entry so they are too.
+#
+# `seed` is a plain int rather than an Optional, because "None" would have to
+# mean either "deterministic default" or "leave it random" and neither reading
+# is obvious. Pass a different int for a different variation.
+_DEFAULT_SEED = 0
+
+
+def _seed_global_rng(seed: int) -> None:
+    """Seed the C rand() stream shared by STK Noise and the DaisySP generators.
+
+    Functions taking a ``seed`` parameter call this on entry. The default seed
+    makes repeated calls with identical arguments return identical audio; pass
+    a different value for a different variation.
+    """
+    _stk.set_random_seed(seed)
+
+
+# ---------------------------------------------------------------------------
 # DaisySP Oscillators
 # ---------------------------------------------------------------------------
 
@@ -163,8 +189,11 @@ def clocked_noise(
     frames: int,
     freq: float = 1000.0,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate clocked (sample-and-hold) noise."""
+    _seed_global_rng(seed)
+
     cn = _dsy_noise.ClockedNoise()
     cn.init(sample_rate)
     cn.set_freq(freq)
@@ -176,8 +205,11 @@ def dust(
     frames: int,
     density: float = 1.0,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate Dust (random impulses at given density)."""
+    _seed_global_rng(seed)
+
     d = _dsy_noise.Dust()
     d.init()
     d.set_density(density)
@@ -248,8 +280,11 @@ def analog_snare_drum(
     accent: float = 0.5,
     sustain: bool = False,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate an analog snare drum hit (triggered at sample 0)."""
+    _seed_global_rng(seed)
+
     return _synth_triggered(
         _dsy_drums.AnalogSnareDrum(),
         {
@@ -274,8 +309,11 @@ def hihat(
     accent: float = 0.5,
     sustain: bool = False,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a hi-hat hit (triggered at sample 0)."""
+    _seed_global_rng(seed)
+
     return _synth_triggered(
         _dsy_drums.HiHat(),
         {
@@ -302,8 +340,11 @@ def synthetic_bass_drum(
     accent: float = 0.5,
     sustain: bool = False,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a synthetic bass drum hit (triggered at sample 0)."""
+    _seed_global_rng(seed)
+
     return _synth_triggered(
         _dsy_drums.SyntheticBassDrum(),
         {
@@ -330,8 +371,11 @@ def synthetic_snare_drum(
     accent: float = 0.5,
     sustain: bool = False,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a synthetic snare drum hit (triggered at sample 0)."""
+    _seed_global_rng(seed)
+
     return _synth_triggered(
         _dsy_drums.SyntheticSnareDrum(),
         {
@@ -408,8 +452,11 @@ def string_voice(
     damping: float = 0.5,
     sustain: bool = False,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a string voice hit (triggered at sample 0)."""
+    _seed_global_rng(seed)
+
     return _synth_triggered(
         _dsy_pm.StringVoice(),
         {
@@ -432,8 +479,11 @@ def pluck(
     decay: float = 0.95,
     damp: float = 0.9,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a plucked string sound (triggered at sample 0)."""
+    _seed_global_rng(seed)
+
     npt = max(256, int(sample_rate / freq) + 1)
     p = _dsy_pm.Pluck(sample_rate, npt)
     p.set_freq(freq)
@@ -448,8 +498,11 @@ def drip(
     frames: int,
     dettack: float = 0.01,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a water-drip sound (triggered at sample 0)."""
+    _seed_global_rng(seed)
+
     d = _dsy_pm.Drip()
     d.init(sample_rate, dettack)
     data = d.process(frames)
@@ -468,6 +521,7 @@ def synth_note(
     velocity: float = 0.8,
     release: float = 0.1,
     sample_rate: float = 48000.0,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Synthesize a single note using an STK physical model.
 
@@ -488,6 +542,8 @@ def synth_note(
     sample_rate : float
         Output sample rate.
     """
+    _seed_global_rng(seed)
+
     key = instrument.lower()
     if key not in _STK_INSTRUMENTS:
         raise ValueError(
@@ -745,6 +801,7 @@ def synth_sequence(
     sample_rate: float = 48000.0,
     release: float = 0.1,
     velocity: float = 0.8,
+    seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Synthesize a sequence of notes.
 
@@ -761,6 +818,8 @@ def synth_sequence(
     velocity : float
         Default velocity for all notes.
     """
+    _seed_global_rng(seed)
+
     if not notes:
         raise ValueError("notes list must not be empty")
 
@@ -770,7 +829,7 @@ def synth_sequence(
 
     out = np.zeros(total_frames, dtype=np.float32)
 
-    for freq, start, dur in notes:
+    for i, (freq, start, dur) in enumerate(notes):
         note_buf = synth_note(
             instrument,
             freq=freq,
@@ -778,6 +837,10 @@ def synth_sequence(
             velocity=velocity,
             release=release,
             sample_rate=sample_rate,
+            # Vary the seed per note, or every note in the sequence would draw
+            # the identical noise sequence and sound mechanically alike. Derived
+            # from the caller's seed so the whole sequence stays reproducible.
+            seed=seed + i,
         )
         start_frame = int(sample_rate * start)
         end_frame = min(start_frame + note_buf.frames, total_frames)

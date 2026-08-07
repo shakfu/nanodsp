@@ -1022,8 +1022,9 @@ def auto_pan(
     """LFO-driven stereo panning.
 
     A sine LFO sweeps the signal between left and right channels using
-    equal-power panning.  Mono and stereo inputs are both supported;
-    stereo inputs are summed to mono before panning.
+    equal-power panning.  Always returns 2-channel output: the input is summed
+    to mono before panning, so mono input is widened and more than two channels
+    are folded to a stereo pair.  Frame count and sample rate are preserved.
 
     Parameters
     ----------

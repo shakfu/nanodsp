@@ -570,3 +570,111 @@ class TestIntegrationWithModules:
         stft.analyse(buf.data)
         spec = stft.get_spectrum()
         assert spec.dtype == np.complex64
+
+
+# =========================================================================
+# Storage ownership
+#
+# The constructor used to adopt a contiguous float32 ndarray as-is while
+# copying anything that needed conversion, so whether a buffer aliased its
+# caller's array depended on that array's dtype and memory layout. slice() had
+# the matching problem: a frame slice of a mono buffer is contiguous and was
+# adopted, while the same slice of a stereo buffer was not and got copied.
+# =========================================================================
+
+
+class TestStorageOwnership:
+    def test_contiguous_float32_input_is_not_aliased(self):
+        src = np.zeros((1, 8), dtype=np.float32)
+        buf = AudioBuffer(src)
+        buf.data[0, 0] = 5.0
+        assert src[0, 0] == 0.0, "writes through the buffer reached the caller's array"
+
+    def test_writes_to_source_do_not_reach_the_buffer(self):
+        src = np.zeros((2, 8), dtype=np.float32)
+        buf = AudioBuffer(src)
+        src[0, 0] = 5.0
+        assert buf.data[0, 0] == 0.0
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            np.zeros((1, 8), dtype=np.float32),  # contiguous, already float32
+            np.zeros((2, 8), dtype=np.float32),
+            np.zeros((1, 8), dtype=np.float64),  # needs dtype conversion
+            np.zeros((2, 8), dtype=np.float32).T.T,  # contiguous view
+            np.asfortranarray(np.zeros((2, 8), dtype=np.float32)),  # non-contiguous
+        ],
+        ids=["mono-f32", "stereo-f32", "f64", "view", "fortran"],
+    )
+    def test_ownership_is_independent_of_dtype_and_layout(self, src):
+        """The whole point: the contract must not depend on the input's layout."""
+        buf = AudioBuffer(src)
+        assert not np.shares_memory(buf.data, src)
+
+    def test_copy_false_hands_over_storage(self):
+        src = np.zeros((1, 8), dtype=np.float32)
+        buf = AudioBuffer(src, copy=False)
+        buf.data[0, 1] = 7.0
+        assert src[0, 1] == 7.0
+
+    def test_from_audiobuffer_copies(self):
+        src = AudioBuffer(np.zeros((1, 4), dtype=np.float32))
+        clone = AudioBuffer(src)
+        clone.data[0, 0] = 9.0
+        assert src.data[0, 0] == 0.0
+
+    def test_from_audiobuffer_copy_false_shares(self):
+        src = AudioBuffer(np.zeros((1, 4), dtype=np.float32))
+        view = AudioBuffer(src, copy=False)
+        view.data[0, 0] = 9.0
+        assert src.data[0, 0] == 9.0
+
+    @pytest.mark.parametrize("channels", [1, 2, 6])
+    def test_slice_never_shares_storage(self, channels):
+        src = AudioBuffer(np.zeros((channels, 10), dtype=np.float32))
+        sliced = src.slice(2, 5)
+        sliced.data[0, 0] = 1.0
+        assert src.data[0, 2] == 0.0
+        assert not np.shares_memory(sliced.data, src.data)
+
+    def test_slice_content_is_correct(self):
+        src = AudioBuffer(np.arange(10, dtype=np.float32).reshape(1, 10))
+        npt.assert_array_equal(src.slice(2, 5).data[0], [2.0, 3.0, 4.0])
+
+    @pytest.mark.parametrize("channels", [1, 2])
+    def test_getitem_channel_slice_never_shares(self, channels):
+        src = AudioBuffer(np.zeros((channels, 10), dtype=np.float32))
+        sub = src[0:1]
+        sub.data[0, 0] = 1.0
+        assert src.data[0, 0] == 0.0
+
+    def test_documented_view_escape_hatch_still_works(self):
+        src = AudioBuffer(np.zeros((2, 10), dtype=np.float32))
+        view = src.data[:, 2:5]
+        view[0, 0] = 1.0
+        assert src.data[0, 2] == 1.0
+
+
+class TestArrayProtocol:
+    def test_np_array_copies(self):
+        buf = AudioBuffer(np.zeros((1, 4), dtype=np.float32))
+        arr = np.array(buf)
+        arr[0, 0] = 3.0
+        assert buf.data[0, 0] == 0.0
+
+    def test_np_asarray_shares(self):
+        buf = AudioBuffer(np.zeros((1, 4), dtype=np.float32))
+        assert np.shares_memory(np.asarray(buf), buf.data)
+
+    def test_dtype_conversion_still_works(self):
+        buf = AudioBuffer(np.ones((1, 4), dtype=np.float32))
+        arr = np.asarray(buf, dtype=np.float64)
+        assert arr.dtype == np.float64
+        npt.assert_array_equal(arr, np.ones((1, 4)))
+
+    def test_copy_false_with_conversion_raises(self):
+        """numpy's contract: forbidding a copy that is unavoidable must error."""
+        buf = AudioBuffer(np.ones((1, 4), dtype=np.float32))
+        with pytest.raises(ValueError):
+            buf.__array__(np.dtype(np.float64), copy=False)

@@ -155,6 +155,16 @@ inline void LentPitShift::process()
     }
   }
 
+  // nanodsp local patch: if the loop above completed without finding a minimum
+  // under the threshold, delay_ has been incremented past its bound and is
+  // tMax_+1, one element beyond the dt/cumDt/dpt arrays (allocated with
+  // tMax_+1 entries, so valid indices are 0..tMax_). The test below then reads
+  // out of bounds. Clamp to the last index the loop actually computed, which is
+  // what the test intends; when the loop broke early, delay_ is already valid
+  // and this is a no-op. Found with AddressSanitizer.
+  // See thirdparty/VERSIONS.md.
+  if ( delay_ > tMax_ ) delay_ = tMax_;
+
   // Test for the last period length.
   if ( dpt[delay_]-dpt[delay_-1] < 0 ) {
     if ( dpt[delay_] < threshold_ )

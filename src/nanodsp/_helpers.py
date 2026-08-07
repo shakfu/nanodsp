@@ -68,7 +68,12 @@ def _resolve_biquad_design(design: str | int) -> int:
 
 
 def _process_per_channel(buf: AudioBuffer, process_fn) -> AudioBuffer:
-    """Apply process_fn(1d_array) -> 1d_array per channel, return new AudioBuffer."""
+    """Apply process_fn(1d_array) -> 1d_array per channel, return new AudioBuffer.
+
+    ``out`` is allocated here and referenced by nothing else once this returns,
+    so it is handed over with ``copy=False``. This is the driver behind most of
+    the effects API, where the default copy would be pure overhead.
+    """
     out = np.zeros_like(buf.data)
     for ch in range(buf.channels):
         out[ch] = process_fn(buf.ensure_1d(ch))
@@ -77,6 +82,7 @@ def _process_per_channel(buf: AudioBuffer, process_fn) -> AudioBuffer:
         sample_rate=buf.sample_rate,
         channel_layout=buf.channel_layout,
         label=buf.label,
+        copy=False,
     )
 
 

@@ -16,6 +16,34 @@ All libraries are vendored directly into the `thirdparty/` directory (no git sub
 | stk (STK) | ~5.0.0-dev (see notes) | MIT | https://github.com/thestk/stk |
 | vafilters | unversioned (Faust-generated) | MIT-style STK-4.3 | local / derived from Faust DSP |
 
+## Local patches
+
+Changes made to vendored sources. Each is marked in place with a
+`nanodsp local patch` comment, so `grep -rn "nanodsp local patch" thirdparty/`
+lists them all. **Re-apply these after any upgrade of the library concerned.**
+
+| File | Change | Why |
+|------|--------|-----|
+| `DaisySP/Source/Effects/chorus.cpp` | `lfo_freq_ = 0.f;` added in `ChorusEngine::Init` | `Init` calls `SetLfoFreq`, which reads `lfo_freq_` to decide LFO direction before anything has assigned it. An indeterminate negative value latches a reversed LFO for the object's lifetime, and every later `SetLfoFreq` preserves that sign, so no wrapper can correct it after construction. |
+| `DaisySP/Source/Effects/flanger.cpp` | same, in `Flanger::Init` | same defect |
+| `DaisySP/Source/Effects/phaser.cpp` | same, in `PhaserEngine::Init` | same defect |
+| `stk/src/Noise.cpp` | `setSeed(0)` no longer calls `srand(time(NULL))` | Upstream reseeds from the wall clock for the default seed, which is every `Noise` inside every STK voice. That made STK renders irreproducible across wall-clock seconds and -- because `srand()` is process-global and DaisySP draws from the same `rand()` stream -- silently randomised unrelated DaisySP generators as a side effect of constructing an STK instrument. Callers wanting variation seed explicitly via `nanodsp._core.stk.set_random_seed()`, which the synthesis wrappers expose as a `seed` parameter. |
+| `stk/src/PitShift.cpp` | window init loop `i <= size()` -> `i < size()` | **Heap buffer overflow.** The constructor wrote one `StkFloat` past the end of its 5000-element window buffer, corrupting the allocator's metadata. The process then trapped inside `malloc` at some later, unrelated allocation, so the crash appeared to come from whatever code happened to allocate next. |
+| `stk/include/LentPitShift.h` | clamp `delay_` to `tMax_` before the final-period test | **Heap buffer overflow (read).** When the pitch-tracking loop completes without finding a minimum under the threshold, `delay_` ends at `tMax_+1`, one past the end of the `dt`/`cumDt`/`dpt` arrays; the test immediately after then read out of bounds. Input-dependent, so it fired only for some signals. |
+
+Both overflows were found with AddressSanitizer (`make asan`) after an
+intermittent SIGTRAP inside `malloc` during an ordinary test run. They are
+upstream STK bugs, not binding bugs, and neither is detectable from Python --
+the corruption is silent until an unrelated allocation trips over it.
+
+The DaisySP patches are one line each and could not be done through the
+force-include shim in `cmake/daisysp_compat.h`, which can only add
+declarations, not alter a function body.
+
+Regression coverage: `tests/test_stk_determinism.py` pins the seeding
+behaviour, and `tests/GOLDEN.json` pins the numeric output of chorus, flanger
+and phaser.
+
 ## Notes
 
 - **choc**: Copyright 2025 Tracktion Corporation. No version tags or macros found in the vendored snapshot.

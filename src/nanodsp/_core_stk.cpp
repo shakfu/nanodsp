@@ -1,5 +1,7 @@
 #include "_core_common.h"
 
+#include <cstdlib>
+
 #include <Stk.h>
 #include <SineWave.h>
 #include <Noise.h>
@@ -832,6 +834,25 @@ void bind_stk(nb::module_ &m) {
     stk_mod.def("sample_rate", []() {
         return (float)Stk::sampleRate();
     });
+
+    // Global random seed.
+    //
+    // STK's Noise draws from the C library rand(), and Noise's constructor
+    // seeds it with srand(time(NULL)) whenever the (default) seed is 0. Every
+    // voice containing a Noise therefore renders differently on each run that
+    // lands in a different wall-clock second, and because srand() is process
+    // global, constructing one also perturbs anything else drawing from rand().
+    //
+    // Noise::tick() reads the rand() state at process time rather than at
+    // construction, so re-seeding after a voice is built -- but before it is
+    // ticked -- is enough to make the render reproducible. That is what the
+    // `seed` parameter on the synthesis wrappers does.
+    stk_mod.def("set_random_seed", [](unsigned int seed) {
+        std::srand(seed);
+    }, "seed"_a,
+    "Seed the C rand() state that STK's Noise draws from, making voices "
+    "containing noise (clarinet, flute, plucked, sitar, pluck, drip) render "
+    "reproducibly. Call after constructing a voice and before processing it.");
 
     bind_stk_generators(stk_mod);
     bind_stk_filters(stk_mod);

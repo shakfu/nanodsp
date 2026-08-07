@@ -15,6 +15,11 @@ void ChorusEngine::Init(float sample_rate)
     SetDelay(.75);
 
     lfo_phase_ = 0.f;
+    // nanodsp local patch: SetLfoFreq reads lfo_freq_ to decide the LFO
+    // direction, but nothing has assigned it yet. An indeterminate negative
+    // value latches a reversed LFO for the object's whole life, and every
+    // later SetLfoFreq preserves that sign. See thirdparty/VERSIONS.md.
+    lfo_freq_ = 0.f;
     SetLfoFreq(.3f);
     SetLfoDepth(.9f);
 }

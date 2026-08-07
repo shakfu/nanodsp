@@ -4,7 +4,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 
 ## Features
 
-- **190+ DSP functions** -- filters, effects, dynamics, reverb, synthesis, analysis, spectral processing, time-stretching, granular synthesis
+- **168 registered DSP functions** -- 110 chainable audio effects plus generators, analyzers, and spectral-domain operators, spanning filters, dynamics, reverb, synthesis, analysis, time-stretching and granular synthesis (`nanodsp list` enumerates them)
 
 - **12 C++ backends** -- signalsmith, signalsmith-stretch, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP
 
@@ -50,6 +50,7 @@ uv run pytest
 | Library | License | What it provides |
 |---------|---------|------------------|
 | [signalsmith-dsp](https://signalsmith-audio.co.uk/code/dsp/) | MIT | Filters, FFT, delay, envelopes, spectral processing, rates, mix |
+| [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | MIT | High-quality time-stretching and pitch-shifting |
 | [DaisySP](https://github.com/electro-smith/DaisySP) | MIT | Oscillators, effects, dynamics, drums, physical modeling, noise |
 | [STK](https://github.com/thestk/stk) | MIT | Physical modeling instruments, generators, filters, delays, effects |
 | [madronalib](https://github.com/madronalabs/madronalib) | MIT | FDN reverbs, resampling, generators, projections, windows |

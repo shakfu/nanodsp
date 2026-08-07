@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from nanodsp.buffer import AudioBuffer
@@ -15,6 +17,8 @@ from nanodsp._cli import (
     get_registry,
     get_categories,
     get_function,
+    get_processor,
+    get_kinds,
     format_signature,
     PRESETS,
     apply_preset,
@@ -291,7 +295,10 @@ class TestParser:
         assert args.command == "process"
         assert args.input == ["in.wav"]
         assert args.output == "out.wav"
-        assert args.fx == ["lowpass:cutoff_hz=1000", "compress:ratio=4"]
+        assert args.chain == [
+            ("fx", "lowpass:cutoff_hz=1000"),
+            ("fx", "compress:ratio=4"),
+        ]
 
     def test_process_batch_args(self):
         parser = build_parser()
@@ -1022,15 +1029,408 @@ class TestCLIEndToEnd:
         parser = build_parser()
         args = parser.parse_args(["pipe", "-f", "lowpass:cutoff_hz=1000"])
         assert args.command == "pipe"
-        assert args.fx == ["lowpass:cutoff_hz=1000"]
+        assert args.chain == [("fx", "lowpass:cutoff_hz=1000")]
 
     def test_pipe_parser_preset(self):
         parser = build_parser()
         args = parser.parse_args(["pipe", "-p", "telephone"])
         assert args.command == "pipe"
-        assert args.preset == ["telephone"]
+        assert args.chain == [("preset", "telephone")]
 
     def test_pipe_parser_bit_depth(self):
         parser = build_parser()
         args = parser.parse_args(["pipe", "-b", "24"])
         assert args.bit_depth == 24
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for reviewed CLI defects
+#
+# Each class below pins behaviour that was previously wrong. See REVIEW.md for
+# the reproductions these were written from.
+# ---------------------------------------------------------------------------
+
+
+class TestRegistryAdmission:
+    """D3: only chainable (buf, ...) -> AudioBuffer functions are -f operands."""
+
+    def test_typing_constructs_not_registered(self):
+        reg = get_registry()
+        for junk in ("Callable", "Literal", "Any", "AudioBuffer", "Spectrogram"):
+            assert junk not in reg, f"{junk} leaked into the function registry"
+
+    def test_processors_are_chainable(self):
+        for name in ("lowpass", "compress", "reverb", "saturate"):
+            fn, _ = get_processor(name)
+            assert callable(fn)
+
+    def test_analyzer_rejected(self):
+        # Returns a float; chaining it used to raise a raw AttributeError while
+        # writing the output file.
+        with pytest.raises(ValueError, match="not a chainable effect"):
+            get_processor("loudness_lufs")
+
+    def test_spectrogram_producer_rejected(self):
+        # `-f stft` used to write a silently corrupt file and exit 0.
+        with pytest.raises(ValueError, match="not a chainable effect"):
+            get_processor("stft")
+
+    def test_generator_rejected(self):
+        with pytest.raises(ValueError, match="use `nanodsp synth`"):
+            get_processor("oscillator")
+
+    def test_unknown_still_raises_keyerror(self):
+        with pytest.raises(KeyError):
+            get_processor("nonexistent_function")
+
+    def test_every_processor_takes_buf_and_returns_audio(self):
+        import inspect
+
+        kinds = get_kinds()
+        reg = get_registry()
+        for name, kind in kinds.items():
+            if kind != "processor":
+                continue
+            sig = inspect.signature(reg[name][0])
+            params = list(sig.parameters)
+            assert params and params[0] == "buf", name
+            assert "AudioBuffer" in str(sig.return_annotation), name
+
+    def test_cli_rejects_non_chainable(self, tmp_path):
+        wav = tmp_path / "in.wav"
+        AudioBuffer.sine(440.0, frames=4800, sample_rate=48000.0).write(str(wav))
+        with pytest.raises(SystemExit) as exc:
+            main(["process", str(wav), "-o", str(tmp_path / "o.wav"), "-f", "stft"])
+        assert exc.value.code == 1
+
+    def test_cli_reports_missing_required_param(self, tmp_path, capsys):
+        wav = tmp_path / "in.wav"
+        AudioBuffer.sine(440.0, frames=4800, sample_rate=48000.0).write(str(wav))
+        with pytest.raises(SystemExit):
+            main(["process", str(wav), "-o", str(tmp_path / "o.wav"), "-f", "lowpass"])
+        assert "cutoff_hz" in capsys.readouterr().err
+
+    def test_cli_reports_second_buffer_operand(self, tmp_path, capsys):
+        """sidechain_compress is a valid processor but -f cannot supply its detector."""
+        wav = tmp_path / "in.wav"
+        AudioBuffer.sine(440.0, frames=4800, sample_rate=48000.0).write(str(wav))
+        with pytest.raises(SystemExit):
+            main(
+                [
+                    "process",
+                    str(wav),
+                    "-o",
+                    str(tmp_path / "o.wav"),
+                    "-f",
+                    "sidechain_compress:ratio=4",
+                ]
+            )
+        assert "second audio buffer" in capsys.readouterr().err
+
+    def test_cli_reports_multi_operand_function(self, tmp_path, capsys):
+        wav = tmp_path / "in.wav"
+        AudioBuffer.sine(440.0, frames=4800, sample_rate=48000.0).write(str(wav))
+        with pytest.raises(SystemExit):
+            main(["process", str(wav), "-o", str(tmp_path / "o.wav"), "-f", "vocoder"])
+        assert "not a chainable effect" in capsys.readouterr().err
+
+
+class TestChainOrdering:
+    """D2: the chain runs in the order the options were typed."""
+
+    def test_preset_before_fx(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["process", "in.wav", "-o", "out.wav", "-p", "telephone", "-f", "lowpass"]
+        )
+        assert args.chain == [("preset", "telephone"), ("fx", "lowpass")]
+
+    def test_fx_before_preset(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["process", "in.wav", "-o", "out.wav", "-f", "lowpass", "-p", "telephone"]
+        )
+        assert args.chain == [("fx", "lowpass"), ("preset", "telephone")]
+
+    def test_interleaved(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "process",
+                "in.wav",
+                "-o",
+                "out.wav",
+                "-f",
+                "dc_block",
+                "-p",
+                "telephone",
+                "-f",
+                "limit",
+                "-p",
+                "vinyl",
+            ]
+        )
+        assert [k for k, _ in args.chain] == ["fx", "preset", "fx", "preset"]
+        assert [v for _, v in args.chain] == [
+            "dc_block",
+            "telephone",
+            "limit",
+            "vinyl",
+        ]
+
+    def test_order_changes_the_audio(self, tmp_path):
+        """Distortion-then-filter must not equal filter-then-distortion."""
+        src = AudioBuffer.sine(2000.0, frames=9600, sample_rate=48000.0)
+        wav = tmp_path / "in.wav"
+        src.write(str(wav))
+        outs = []
+        for chain in (
+            ["-f", "bitcrush:bit_depth=4", "-f", "lowpass:cutoff_hz=1500"],
+            ["-f", "lowpass:cutoff_hz=1500", "-f", "bitcrush:bit_depth=4"],
+        ):
+            out = tmp_path / f"o{len(outs)}.wav"
+            main(["process", str(wav), "-o", str(out), *chain])
+            outs.append(AudioBuffer.from_file(str(out)).mono.copy())
+        assert not np.allclose(outs[0], outs[1]), (
+            "chain order had no effect on the output"
+        )
+
+
+class TestPresetOverrides:
+    """D1: overrides work on chain presets, not just single-function presets."""
+
+    @staticmethod
+    def _buf():
+        return AudioBuffer.sine(440.0, frames=48000, sample_rate=48000.0)
+
+    def test_unscoped_override_on_chain_preset(self):
+        # Previously raised TypeError from the first step that did not accept it.
+        result = apply_preset("master_pop", self._buf(), {"target_lufs": -16.0})
+        assert isinstance(result, AudioBuffer)
+
+    def test_unscoped_override_actually_applies(self):
+        from nanodsp.analysis import loudness_lufs
+
+        quiet = apply_preset("master_pop", self._buf(), {"target_lufs": -24.0})
+        loud = apply_preset("master_pop", self._buf(), {"target_lufs": -12.0})
+        assert loudness_lufs(loud) > loudness_lufs(quiet) + 6.0
+
+    def test_scoped_override_targets_one_step(self):
+        result = apply_preset(
+            "master_hiphop", self._buf(), {"highpass.cutoff_hz": 40.0}
+        )
+        assert isinstance(result, AudioBuffer)
+
+    def test_scoped_override_on_unknown_step_raises(self):
+        with pytest.raises(KeyError, match="no step"):
+            apply_preset("master_pop", self._buf(), {"nosuchstep.x": 1.0})
+
+    def test_scoped_override_on_fn_preset(self):
+        result = apply_preset("master", self._buf(), {"master.target_lufs": -20.0})
+        assert isinstance(result, AudioBuffer)
+
+    def test_every_chain_preset_accepts_an_unscoped_override(self):
+        """No built-in preset may reject an override it does not use."""
+        from nanodsp._cli import get_presets
+
+        for name, preset in get_presets().items():
+            if "chain" not in preset:
+                continue
+            apply_preset(name, self._buf(), {"target_lufs": -20.0})
+
+
+class TestCoercionEdgeCases:
+    """D8: the no-annotation guess path."""
+
+    def test_scientific_notation_is_a_float(self):
+        assert coerce_value("1e3", None) == 1000.0
+
+    def test_infinity_does_not_raise(self):
+        assert coerce_value("inf", None) == float("inf")
+
+    def test_plain_integer_stays_int(self):
+        assert coerce_value("440", None) == 440
+        assert isinstance(coerce_value("440", None), int)
+
+    def test_signed_integer(self):
+        assert coerce_value("-3", None) == -3
+
+    def test_boolean_literals(self):
+        assert coerce_value("true", None) is True
+        assert coerce_value("false", None) is False
+
+    def test_bare_word_stays_string(self):
+        assert coerce_value("hall", None) == "hall"
+
+
+class TestParallelBatch:
+    """-j/--jobs: concurrent batch processing (6.5)."""
+
+    @staticmethod
+    def _make_inputs(tmp_path, n=4):
+        paths = []
+        for i in range(n):
+            p = tmp_path / f"in{i}.wav"
+            AudioBuffer.sine(
+                220.0 * (i + 1), channels=2, frames=4800, sample_rate=48000.0
+            ).write(str(p))
+            paths.append(str(p))
+        return paths
+
+    def test_parallel_matches_serial_output(self, tmp_path):
+        """Concurrency must not change the audio."""
+        inputs = self._make_inputs(tmp_path)
+        serial_dir, par_dir = tmp_path / "serial", tmp_path / "par"
+        chain = ["-f", "lowpass:cutoff_hz=2000", "-f", "compress:ratio=4"]
+        main(["-q", "process", *inputs, "-O", str(serial_dir), *chain])
+        main(["-q", "process", *inputs, "-O", str(par_dir), *chain, "-j", "4"])
+        for p in inputs:
+            name = Path(p).name
+            a = AudioBuffer.from_file(str(serial_dir / name))
+            b = AudioBuffer.from_file(str(par_dir / name))
+            assert np.array_equal(a.data, b.data), f"{name} differs under -j"
+
+    def test_all_outputs_written(self, tmp_path):
+        inputs = self._make_inputs(tmp_path, n=5)
+        out = tmp_path / "out"
+        main(["-q", "process", *inputs, "-O", str(out), "-f", "dc_block", "-j", "3"])
+        assert sorted(p.name for p in out.glob("*.wav")) == sorted(
+            Path(p).name for p in inputs
+        )
+
+    def test_jobs_zero_uses_cpu_count(self, tmp_path):
+        from nanodsp.__main__ import _resolve_jobs
+
+        assert _resolve_jobs(0) == (os.cpu_count() or 1)
+        assert _resolve_jobs(1) == 1
+        assert _resolve_jobs(None) == 1
+        assert _resolve_jobs(-4) == 1
+
+    def test_failure_in_one_file_exits_nonzero(self, tmp_path):
+        inputs = self._make_inputs(tmp_path, n=2)
+        bad = tmp_path / "bad.wav"
+        bad.write_bytes(b"not a wav file at all")
+        out = tmp_path / "out"
+        with pytest.raises(SystemExit) as exc:
+            main(
+                [
+                    "-q",
+                    "process",
+                    *inputs,
+                    str(bad),
+                    "-O",
+                    str(out),
+                    "-f",
+                    "dc_block",
+                    "-j",
+                    "3",
+                ]
+            )
+        assert exc.value.code == 1
+        # The good files must still have been written.
+        assert len(list(out.glob("in*.wav"))) == 2
+
+    def test_dry_run_reports_jobs(self, tmp_path, capsys):
+        inputs = self._make_inputs(tmp_path, n=2)
+        main(["process", *inputs, "-O", str(tmp_path / "o"), "-n", "-j", "2"])
+        assert "Jobs: 2" in capsys.readouterr().out
+
+
+class TestLevelReporting:
+    """--stats and the clipping warning (6.6)."""
+
+    @staticmethod
+    def _wav(tmp_path, name="in.wav", amp=0.5):
+        p = tmp_path / name
+        buf = AudioBuffer.sine(440.0, frames=48000, sample_rate=48000.0)
+        AudioBuffer(buf.data * amp, sample_rate=48000.0).write(str(p))
+        return str(p)
+
+    def test_stats_reports_input_and_output(self, tmp_path, capsys):
+        src = self._wav(tmp_path)
+        main(
+            [
+                "process",
+                src,
+                "-o",
+                str(tmp_path / "o.wav"),
+                "--stats",
+                "-f",
+                "lowpass:cutoff_hz=1000",
+            ]
+        )
+        out = capsys.readouterr().out
+        assert "input" in out and "output" in out
+        assert "dBFS" in out and "dBTP" in out and "LUFS" in out
+
+    def test_stats_shown_even_when_quiet_is_not_set(self, tmp_path, capsys):
+        src = self._wav(tmp_path)
+        main(
+            ["process", src, "-o", str(tmp_path / "o.wav"), "--stats", "-f", "dc_block"]
+        )
+        assert "peak" in capsys.readouterr().out
+
+    def test_no_stats_without_the_flag(self, tmp_path, capsys):
+        src = self._wav(tmp_path)
+        main(["process", src, "-o", str(tmp_path / "o.wav"), "-f", "dc_block"])
+        assert "dBTP" not in capsys.readouterr().out
+
+    def test_clipping_warns_for_integer_output(self, tmp_path, capsys):
+        src = self._wav(tmp_path)
+        main(
+            [
+                "process",
+                src,
+                "-o",
+                str(tmp_path / "o.wav"),
+                "-f",
+                "normalize_peak:target_db=6",
+            ]
+        )
+        assert "clips" in capsys.readouterr().err
+
+    def test_no_clipping_warning_for_float_output(self, tmp_path, capsys):
+        """Float output stores the peak verbatim, so there is nothing to warn about."""
+        src = self._wav(tmp_path)
+        main(
+            [
+                "process",
+                src,
+                "-o",
+                str(tmp_path / "o.wav"),
+                "-b",
+                "32",
+                "-f",
+                "normalize_peak:target_db=6",
+            ]
+        )
+        assert "clips" not in capsys.readouterr().err
+
+    def test_no_clipping_warning_when_within_range(self, tmp_path, capsys):
+        src = self._wav(tmp_path)
+        main(
+            [
+                "process",
+                src,
+                "-o",
+                str(tmp_path / "o.wav"),
+                "-f",
+                "normalize_peak:target_db=-3",
+            ]
+        )
+        assert "clips" not in capsys.readouterr().err
+
+    def test_quiet_suppresses_the_clipping_warning(self, tmp_path, capsys):
+        src = self._wav(tmp_path)
+        main(
+            [
+                "-q",
+                "process",
+                src,
+                "-o",
+                str(tmp_path / "o.wav"),
+                "-f",
+                "normalize_peak:target_db=6",
+            ]
+        )
+        assert capsys.readouterr().err == ""
