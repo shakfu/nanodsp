@@ -1,4 +1,24 @@
-"""Composed effects -- exciter, de-esser, mastering, vocal chain, etc."""
+"""Composed effects -- exciter, de-esser, mastering, vocal chain, etc.
+Examples
+--------
+>>> from nanodsp import AudioBuffer
+>>> from nanodsp.effects import composed
+>>> buf = AudioBuffer.sine(440.0, channels=2, frames=96000, sample_rate=48000.0)
+
+Whole mastering and voice chains in one call:
+
+>>> composed.master(buf, target_lufs=-14.0).channels
+2
+>>> composed.vocal_chain(AudioBuffer.sine(220.0, frames=96000)).frames
+96000
+
+Multi-band and parallel dynamics:
+
+>>> composed.multiband_compress(buf).channels
+2
+>>> composed.parallel_compress(buf, mix=0.5).frames
+96000
+"""
 
 from __future__ import annotations
 

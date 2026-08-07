@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Streaming for any per-channel effect** (`nanodsp.stream`) -- `StatefulFilter` grew from five biquad constructors into a general `StatefulProcessor` (the old name remains as an alias) with eighteen ready-made constructors spanning dynamics, filters, modulation and the per-channel reverbs. Each holds one DSP object per channel across calls, so feeding a signal in blocks gives bit-identical output to processing it whole -- verified for all eighteen at two block sizes. Effects that cannot work this way now say so rather than being quietly absent: channel-linked dynamics need every channel at once, and the mono-to-stereo effects (the FDN `reverb`, `chorus`, the STK reverbs) have no per-channel form.
+
+- **Chunked out-of-core I/O** (`io.read_blocks`, `io.BlockWriter`) -- read and write WAV a block at a time, so file size is bounded by disk rather than RAM. `read()` decodes whole-file, which caps usable input at a fraction of memory: an hour of stereo 96 kHz is ~2.7 GB as float32.
+
+- **`nanodsp process --stream`** -- processes a file in constant memory by rebuilding the chain from stateful processors. Measured on a 60 s stereo 96 kHz file: peak RSS 379 MB whole-file versus 42 MB streamed, with byte-identical output. `--block-size` tunes the block. A chain containing anything without a streaming form is rejected up front, naming every offender; `compress` and `limit` report that they run unlinked rather than silently differing.
+
+- **File operands in the CLI** (`-f name:param=@path.wav`) -- effects taking a second buffer were previously reachable only from Python. `sidechain_compress`, `vocoder`, `convolve`, `eq_match`, `crossfade` and the new convolution reverb now work from the command line: `-f sidechain_compress:sidechain=@kick.wav,ratio=8`. Omitting the operand suggests the syntax rather than saying the function is unusable.
+
+- **Convolution reverb** (`effects.reverb.convolution_reverb`) -- IR-based reverb with wet/dry mix, pre-delay, optional tail extension and IR normalisation (on by default, since recorded IRs vary in level by orders of magnitude and `mix` would otherwise mean something different for every file). Pre-delay is applied to the IR rather than the wet signal, so the tail is not clipped by the delay amount. Unlike the algorithmic `reverb`, it preserves the input channel count.
+
+- **178 verified docstring examples** across twelve modules, and `tests/test_doctests.py` to run them. The package previously had none, so every documented example was prose that nothing executed -- writing these immediately found three wrong parameter names and one wrong return value in examples I had just written. Examples avoid printing bare numpy scalars, whose repr differs across numpy versions.
+
+### Changed
+
+- **Effect classification keys on the leading parameter's annotation, not its name** -- previously a chainable effect had to call its first parameter `buf`, which excluded `vocoder(modulator, carrier)` and `crossfade(buf_a, buf_b)`. Both are chainable now that `-f` can load a second buffer from a file. The registry gained `convolution_reverb` and reports 114 chainable effects of 169 entries.
+
 ## [0.2.0]
 
 This release is dominated by correctness work following a full project review.

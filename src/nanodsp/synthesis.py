@@ -1,4 +1,28 @@
-"""Sound synthesis: oscillators, noise, drums, physical modeling, STK instruments."""
+"""Sound synthesis: oscillators, noise, drums, physical modeling, STK instruments.
+Examples
+--------
+>>> from nanodsp import synthesis
+
+Oscillators and FM:
+
+>>> synthesis.oscillator(4800, freq=440.0, waveform="saw").frames
+4800
+>>> synthesis.fm2(4800, freq=220.0, ratio=2.0, index=3.0).frames
+4800
+
+Drums and physical models. Voices drawing on the shared C ``rand()`` stream take
+a ``seed`` and are pure functions of their arguments:
+
+>>> a = synthesis.hihat(2400, seed=7)
+>>> b = synthesis.hihat(2400, seed=7)
+>>> bool((a.data == b.data).all())
+True
+
+STK instruments:
+
+>>> synthesis.synth_note("clarinet", freq=440.0, duration=0.1, seed=1).channels
+1
+"""
 
 from __future__ import annotations
 
@@ -75,6 +99,15 @@ def oscillator(
         ``"square"``, ``"polyblep_tri"``, ``"polyblep_saw"``, ``"polyblep_square"``.
     pw : float
         Pulse width (for square/pulse waveforms), 0.0--1.0.
+
+    Examples
+    --------
+    >>> from nanodsp import synthesis
+    >>> buf = synthesis.oscillator(48000, freq=440.0, waveform="saw")
+    >>> buf.frames, buf.channels
+    (48000, 1)
+    >>> round(buf.duration, 3)
+    1.0
     """
     wf = _resolve_waveform(waveform, _WAVEFORM_MAP)
     osc = _dsy_osc.Oscillator()

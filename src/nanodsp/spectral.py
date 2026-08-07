@@ -1,4 +1,26 @@
-"""STFT, spectral transforms, and EQ matching."""
+"""STFT, spectral transforms, and EQ matching.
+Examples
+--------
+>>> import numpy as np
+>>> from nanodsp import AudioBuffer, spectral
+>>> buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0)
+
+Analyse, modify, resynthesise:
+
+>>> spec = spectral.stft(buf, window_size=1024, hop_size=256)
+>>> spec.bins, spec.channels
+(512, 1)
+>>> back = spectral.istft(spec)
+>>> back.frames
+8192
+
+Magnitudes and bin frequencies:
+
+>>> spectral.magnitude(spec).shape == spec.data.shape
+True
+>>> round(spectral.bin_freq(spec, 10), 1)
+468.8
+"""
 
 from __future__ import annotations
 

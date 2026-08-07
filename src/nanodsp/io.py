@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
+from typing import IO, Iterator
 
 import numpy as np
 
@@ -410,6 +411,16 @@ def read(path: str | Path) -> AudioBuffer:
     """Read an audio file and return an AudioBuffer.
 
     Format is detected by file extension (.wav, .flac).
+
+    Examples
+    --------
+    >>> import tempfile, os
+    >>> from nanodsp import AudioBuffer, io
+    >>> path = os.path.join(tempfile.mkdtemp(), "tone.wav")
+    >>> io.write(path, AudioBuffer.sine(440.0, frames=1024, sample_rate=44100))
+    >>> buf = io.read(path)
+    >>> buf.frames, int(buf.sample_rate)
+    (1024, 44100)
     """
     path = Path(path)
     ext = path.suffix.lower()
@@ -436,7 +447,21 @@ def write(
     buf : AudioBuffer
         Audio data to write.
     bit_depth : int
-        Output bit depth: 16 or 24.
+        16 or 24 for signed PCM, 32 or 64 for IEEE float. See :func:`write_wav`.
+
+    Examples
+    --------
+    >>> import tempfile, os
+    >>> from nanodsp import AudioBuffer, io
+    >>> d = tempfile.mkdtemp()
+    >>> buf = AudioBuffer.sine(440.0, channels=2, frames=256)
+
+    PCM clips to [-1, 1]; float output stores samples verbatim:
+
+    >>> io.write(os.path.join(d, "a.wav"), buf, bit_depth=24)
+    >>> io.write(os.path.join(d, "b.wav"), buf, bit_depth=32)
+    >>> io.read(os.path.join(d, "b.wav")).channels
+    2
     """
     path = Path(path)
     ext = path.suffix.lower()
@@ -445,3 +470,253 @@ def write(
         supported = ", ".join(sorted(_FORMAT_WRITERS))
         raise ValueError(f"Unsupported audio format '{ext}'. Supported: {supported}")
     writer(path, buf, bit_depth=bit_depth)
+
+
+# ---------------------------------------------------------------------------
+# Chunked (out-of-core) WAV I/O
+#
+# read()/write() hold the whole file in memory: an hour of stereo 96 kHz is
+# ~2.7 GB as float32, which caps the usable file size at a fraction of RAM. The
+# streaming pair below reads and writes a block at a time, so file size is
+# bounded by disk rather than memory.
+#
+# WAV only. The FLAC path goes through the CHOC codec, which decodes whole-file.
+# ---------------------------------------------------------------------------
+
+
+def _find_data_chunk(fh, source: str) -> tuple[dict, int, int]:
+    """Locate the fmt and data chunks in an open binary file.
+
+    Returns ``(fmt_info, data_offset, data_size)`` without reading the samples.
+    """
+    header = fh.read(12)
+    if len(header) < 12:
+        raise ValueError(f"Not a RIFF file: too short in {source}")
+    riff, _size, wave_id = struct.unpack("<4sI4s", header)
+    if riff in (b"RF64", b"BW64"):
+        raise ValueError(f"{riff.decode()} (>4 GB) files are not supported in {source}")
+    if riff != b"RIFF" or wave_id != b"WAVE":
+        raise ValueError(f"Not a RIFF/WAVE file in {source}")
+
+    fmt: dict | None = None
+    while True:
+        head = fh.read(8)
+        if len(head) < 8:
+            break
+        chunk_id, chunk_size = struct.unpack("<4sI", head)
+        body = fh.tell()
+        if chunk_id == b"fmt ":
+            raw = fh.read(chunk_size)
+            if len(raw) < 16:
+                raise ValueError(f"Malformed fmt chunk in {source}")
+            tag, channels, rate, _bps, _align, bits = struct.unpack_from("<HHIIHH", raw)
+            if tag == _WAVE_FORMAT_EXTENSIBLE:
+                if len(raw) < 40:
+                    raise ValueError(
+                        f"Malformed WAVE_FORMAT_EXTENSIBLE fmt chunk in {source}"
+                    )
+                (tag,) = struct.unpack_from("<H", raw, 24)
+            fmt = {
+                "tag": tag,
+                "channels": channels,
+                "sample_rate": rate,
+                "bits": bits,
+            }
+        elif chunk_id == b"data":
+            if fmt is None:
+                raise ValueError(f"data chunk precedes fmt chunk in {source}")
+            return fmt, body, chunk_size
+        fh.seek(body + chunk_size + (chunk_size & 1))
+
+    raise ValueError(f"No data chunk found in {source}")
+
+
+def read_blocks(
+    path: str | Path,
+    block_size: int = 65536,
+) -> "Iterator[AudioBuffer]":
+    """Yield a WAV file one block at a time, without loading it whole.
+
+    Parameters
+    ----------
+    path : str or Path
+        WAV file to read.
+    block_size : int
+        Frames per block. The final block is short if the file does not divide
+        evenly; it is never zero-padded.
+
+    Yields
+    ------
+    AudioBuffer
+        Successive blocks, each carrying the file's sample rate and channel
+        count.
+
+    Notes
+    -----
+    Accepts the same encodings as :func:`read_wav`. Blocks are decoded on
+    demand, so peak memory is ``block_size`` frames rather than the whole file.
+
+    Examples
+    --------
+    >>> import tempfile, os
+    >>> from nanodsp import AudioBuffer, io
+    >>> path = os.path.join(tempfile.mkdtemp(), "long.wav")
+    >>> io.write(path, AudioBuffer.sine(440.0, channels=2, frames=10000))
+    >>> [b.frames for b in io.read_blocks(path, block_size=4096)]
+    [4096, 4096, 1808]
+
+    Filter a file of any size in constant memory:
+
+    >>> from nanodsp.stream import stateful_lowpass
+    >>> out = os.path.join(tempfile.mkdtemp(), "filtered.wav")
+    >>> filt = stateful_lowpass(2000.0, channels=2, sample_rate=48000.0)
+    >>> with io.BlockWriter(out, 48000.0, channels=2) as writer:
+    ...     for block in io.read_blocks(path, block_size=4096):
+    ...         writer.write(filt.process(block))
+    >>> io.read(out).frames
+    10000
+    """
+    if block_size < 1:
+        raise ValueError(f"block_size must be >= 1, got {block_size}")
+    path = Path(path)
+    source = f"'{path}'"
+    with open(path, "rb") as fh:
+        fmt, offset, size = _find_data_chunk(fh, source)
+        channels = fmt["channels"]
+        bits = fmt["bits"]
+        frame_bytes = channels * (bits // 8)
+        if frame_bytes <= 0:
+            raise ValueError(f"Invalid frame size in {source}")
+        total_frames = size // frame_bytes
+        fh.seek(offset)
+        remaining = total_frames
+        while remaining > 0:
+            n = min(block_size, remaining)
+            raw = fh.read(n * frame_bytes)
+            if not raw:
+                break
+            # Reuse the whole-file decoder by handing it a synthetic stream, so
+            # block decoding cannot drift from read_wav's behaviour.
+            yield _decode_samples(raw, fmt, source)
+            remaining -= n
+
+
+def _decode_samples(raw: bytes, fmt: dict, source: str) -> AudioBuffer:
+    """Decode raw sample bytes for a known fmt into an AudioBuffer."""
+    tag, bits, channels = fmt["tag"], fmt["bits"], fmt["channels"]
+    if tag == _WAVE_FORMAT_IEEE_FLOAT:
+        dtype = {32: "<f4", 64: "<f8"}.get(bits)
+        if dtype is None:
+            raise ValueError(f"Unsupported float width {bits}-bit in {source}")
+        samples = np.frombuffer(raw, dtype=dtype).astype(np.float32)
+        usable = (len(samples) // channels) * channels
+        samples = samples[:usable]
+        data = (
+            samples.reshape(1, -1) if channels == 1 else samples.reshape(-1, channels).T
+        )
+        return AudioBuffer(
+            np.ascontiguousarray(data, dtype=np.float32),
+            sample_rate=float(fmt["sample_rate"]),
+            copy=False,
+        )
+    if tag == _WAVE_FORMAT_PCM:
+        sampwidth = bits // 8
+        n_frames = len(raw) // (sampwidth * channels)
+        return _decode_wav_frames(
+            raw, sampwidth, channels, n_frames, fmt["sample_rate"], source=source
+        )
+    name = _FORMAT_NAMES.get(tag, f"0x{tag:04X}")
+    raise ValueError(f"Unsupported WAV encoding: {name} in {source}")
+
+
+class BlockWriter:
+    """Append blocks to a WAV file without holding the whole thing in memory.
+
+    The RIFF header records the total size, which is not known until the last
+    block is written, so a placeholder is written up front and patched on close.
+    Use as a context manager to guarantee the patch happens.
+
+    Parameters
+    ----------
+    path : str or Path
+        Output file.
+    sample_rate : float
+        Sample rate of the material being written.
+    channels : int
+        Channel count. Every block must match it.
+    bit_depth : int
+        16 or 24 for PCM, 32 or 64 for IEEE float; see :func:`write_wav`.
+
+    Examples
+    --------
+    Filter a file of any size in constant memory::
+
+        with BlockWriter("out.wav", 48000.0, channels=2) as writer:
+            for block in read_blocks("in.wav"):
+                writer.write(filt.process(block))
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        sample_rate: float,
+        channels: int = 1,
+        bit_depth: int = 16,
+    ):
+        _validate_write_depth(bit_depth)
+        if channels < 1:
+            raise ValueError(f"channels must be >= 1, got {channels}")
+        self.path = Path(path)
+        self.sample_rate = float(sample_rate)
+        self.channels = channels
+        self.bit_depth = bit_depth
+        self._frames = 0
+        self._fh: IO[bytes] | None = open(self.path, "wb")
+        # Placeholder header; sizes are patched in close().
+        self._fh.write(self._header(0))
+
+    def _header(self, data_size: int) -> bytes:
+        stub = AudioBuffer(
+            np.zeros((self.channels, 0), dtype=np.float32),
+            sample_rate=self.sample_rate,
+            copy=False,
+        )
+        return _wav_header(stub, self.bit_depth, data_size)
+
+    @property
+    def frames(self) -> int:
+        """Frames written so far."""
+        return self._frames
+
+    def write(self, buf: AudioBuffer) -> None:
+        """Append one block."""
+        if self._fh is None:
+            raise ValueError("write() on a closed BlockWriter")
+        if buf.channels != self.channels:
+            raise ValueError(
+                f"BlockWriter opened for {self.channels} channel(s), got {buf.channels}"
+            )
+        self._fh.write(_encode_wav_frames(buf, self.bit_depth))
+        self._frames += buf.frames
+
+    def close(self) -> None:
+        """Patch the header with the final sizes and close the file."""
+        if self._fh is None:
+            return
+        data_size = self._frames * self.channels * (self.bit_depth // 8)
+        if data_size + 44 > 0xFFFFFFFF:
+            self._fh.close()
+            self._fh = None
+            raise ValueError(
+                "WAV output exceeds the 4 GB RIFF limit; split the file or write FLAC"
+            )
+        self._fh.seek(0)
+        self._fh.write(self._header(data_size))
+        self._fh.close()
+        self._fh = None
+
+    def __enter__(self) -> "BlockWriter":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()

@@ -81,6 +81,13 @@ nanodsp process *.wav -O out/ -f reverb:preset=hall -j 0
 # Report peak / true peak / loudness before and after the chain
 nanodsp process input.wav -o out.wav --stats -f compress:ratio=4
 
+# Stream a file larger than RAM: constant memory, identical output
+nanodsp process huge.wav -o out.wav --stream -f lowpass:cutoff_hz=2000
+
+# Effects taking a second buffer: prefix the value with @ to load a file
+nanodsp process bass.wav -o out.wav -f sidechain_compress:sidechain=@kick.wav,ratio=8
+nanodsp process dry.wav -o wet.wav -f convolution_reverb:ir=@church.wav,mix=0.4
+
 # Dry run -- show chain without reading/writing files
 nanodsp process input.wav -n -f highpass:cutoff_hz=80 -f compress:ratio=4
 
@@ -713,6 +720,32 @@ delay_sec, corr = analysis.gcc_phat(buf, ref)
 
 ### `nanodsp.stream` -- Real-time streaming infrastructure
 
+Stateless effects rebuild their DSP object every call, so feeding them
+successive blocks restarts the filter at each boundary. The `stateful_*`
+constructors keep one object per channel alive instead, so block-by-block
+processing matches whole-buffer processing exactly.
+
+```python
+import numpy as np
+from nanodsp import AudioBuffer
+from nanodsp.io import read_blocks, BlockWriter
+from nanodsp.stream import stateful_lowpass, stateful_compress, STREAMABLE
+
+# 18 effects have a streaming form
+sorted(STREAMABLE)          # lowpass, compress, flanger, schroeder_reverb, ...
+
+# Process a file of any size in constant memory
+filt = stateful_lowpass(2000.0, channels=2, sample_rate=48000.0)
+with BlockWriter("out.wav", 48000.0, channels=2) as writer:
+    for block in read_blocks("huge.wav", block_size=65536):
+        writer.write(filt.process(block))
+```
+
+Channel-linked dynamics and the mono-to-stereo effects (the FDN `reverb`,
+`chorus`, the STK reverbs) have no per-channel form and so cannot stream;
+`nanodsp process --stream` rejects a chain containing them rather than silently
+producing different audio.
+
 Block-based processing, ring buffers, and processor chains for streaming audio.
 
 ```python
@@ -976,7 +1009,7 @@ options:
 
 ```bash
 make build    # rebuild extension after C++ changes
-make test     # run 2342 tests
+make test     # run 2442 tests
 make demos    # run all 20 demo scripts
 make qa       # test + lint + typecheck + format
 make coverage # tests with coverage report

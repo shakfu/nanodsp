@@ -1,4 +1,24 @@
-"""DaisySP effects -- autowah, chorus, flanger, overdrive, etc."""
+"""DaisySP effects -- autowah, chorus, flanger, overdrive, etc.
+Examples
+--------
+>>> from nanodsp import AudioBuffer
+>>> from nanodsp.effects import daisysp
+>>> buf = AudioBuffer.sine(440.0, frames=4800, sample_rate=48000.0)
+
+Modulation effects. ``chorus`` is mono-in/stereo-out, so it widens the buffer:
+
+>>> daisysp.chorus(buf, lfo_freq=0.5).channels
+2
+>>> daisysp.flanger(buf).channels
+1
+
+Distortion and degradation preserve the channel count:
+
+>>> daisysp.bitcrush(buf, bit_depth=8).frames
+4800
+>>> daisysp.overdrive(buf, drive=0.4).channels
+1
+"""
 
 from __future__ import annotations
 

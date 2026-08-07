@@ -1,4 +1,25 @@
-"""Filter functions -- signalsmith biquads, DaisySP, virtual analog, IIR."""
+"""Filter functions -- signalsmith biquads, DaisySP, virtual analog, IIR.
+Examples
+--------
+>>> import numpy as np
+>>> from nanodsp import AudioBuffer
+>>> from nanodsp.effects import filters
+>>> buf = AudioBuffer.sine(6000.0, frames=4096, sample_rate=48000.0)
+
+Biquads, shelving and peaking EQ:
+
+>>> filters.lowpass(buf, cutoff_hz=1000.0).frames
+4096
+>>> filters.peak_db(buf, center_hz=1000.0, db=6.0).channels
+1
+>>> filters.high_shelf_db(buf, cutoff_hz=8000.0, db=-3.0).frames
+4096
+
+Virtual-analog and ladder filters for resonant, non-linear character:
+
+>>> filters.moog_ladder(buf, freq_hz=1200.0, resonance=0.3).frames
+4096
+"""
 
 from __future__ import annotations
 
@@ -48,6 +69,21 @@ def lowpass(
     -------
     AudioBuffer
         Filtered audio.
+
+    Examples
+    --------
+    >>> from nanodsp import AudioBuffer
+    >>> from nanodsp.effects.filters import lowpass
+    >>> import numpy as np
+
+    A 6 kHz tone is strongly attenuated by a 1 kHz lowpass:
+
+    >>> tone = AudioBuffer.sine(6000.0, frames=4096, sample_rate=48000.0)
+    >>> out = lowpass(tone, cutoff_hz=1000.0)
+    >>> bool(np.max(np.abs(out.data)) < 0.2 * np.max(np.abs(tone.data)))
+    True
+    >>> out.frames, out.channels
+    (4096, 1)
     """
     freq = _hz_to_normalized(cutoff_hz, buf.sample_rate)
     design = _resolve_biquad_design(design)

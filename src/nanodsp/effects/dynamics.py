@@ -96,6 +96,28 @@ def compress(
     -------
     AudioBuffer
         Compressed audio.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from nanodsp import AudioBuffer
+    >>> from nanodsp.effects.dynamics import compress
+
+    A sustained loud signal is pulled down once the attack has engaged, so
+    compare the settled tail rather than the peak, which still contains the
+    un-attacked onset:
+
+    >>> loud = AudioBuffer(np.full((1, 24000), 0.9, dtype=np.float32))
+    >>> out = compress(loud, ratio=8.0, threshold=-30.0)
+    >>> bool(np.max(np.abs(out.data[:, -1000:])) < 0.9)
+    True
+
+    Stereo detectors are linked by default, so both channels get the same gain
+    and the image does not shift:
+
+    >>> stereo = AudioBuffer.sine(220.0, channels=2, frames=24000)
+    >>> compress(stereo).channels
+    2
     """
 
     def _process(x):

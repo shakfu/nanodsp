@@ -119,21 +119,27 @@ def _classify(fn: Any) -> str | None:
     if not params:
         return None
 
-    ret = sig.return_annotation
-    # `from __future__ import annotations` is in force package-wide, so
-    # annotations arrive as strings; fall back to the object for safety.
-    ret_str = ret if isinstance(ret, str) else getattr(ret, "__name__", str(ret))
-    returns_audio = "AudioBuffer" in ret_str
+    def _ann(obj) -> str:
+        # `from __future__ import annotations` is in force package-wide, so
+        # annotations arrive as strings; fall back to the object for safety.
+        return obj if isinstance(obj, str) else getattr(obj, "__name__", str(obj))
 
-    first = params[0].name
-    if first == "buf":
+    returns_audio = "AudioBuffer" in _ann(sig.return_annotation)
+    first = params[0]
+    takes_audio = "AudioBuffer" in _ann(first.annotation)
+
+    # Classify on the leading parameter's *annotation* rather than its name.
+    # Most processors call it `buf`, but not all -- `vocoder(modulator,
+    # carrier)` and `crossfade(buf_a, buf_b)` lead with an AudioBuffer under a
+    # different name, and are perfectly chainable now that `-f` can load a
+    # second buffer from a file operand.
+    if takes_audio:
         return PROCESSOR if returns_audio else ANALYZER
-    if first == "spec":
+    if first.name == "spec":
         return SPECTRAL
-    if first == "frames":
+    if first.name == "frames":
         return GENERATOR
-    # Leading operand is another buffer (crossfade, vocoder, mix_buffers, ...)
-    # or a non-audio operand (iir_design, lfo, irfft).
+    # Leading operand is not audio at all (iir_design, lfo, irfft).
     return MULTI
 
 
@@ -826,21 +832,46 @@ def missing_required_params(
     return missing, buffers
 
 
+#: Prefix marking a parameter value as a path to load, rather than a literal.
+#: ``-f sidechain_compress:sidechain=@kick.wav`` reads kick.wav and passes the
+#: resulting AudioBuffer. Without this the several effects taking a second
+#: buffer -- sidechain compression, vocoding, convolution, EQ matching -- were
+#: reachable only from the Python API.
+FILE_OPERAND_PREFIX = "@"
+
+
+def _load_operand(value: str) -> Any:
+    """Load an ``@path`` operand into an AudioBuffer."""
+    from pathlib import Path
+
+    from nanodsp.io import read
+
+    path = Path(value[len(FILE_OPERAND_PREFIX) :]).expanduser()
+    if not path.is_file():
+        raise ValueError(f"file operand not found: {path}")
+    return read(path)
+
+
 def coerce_params(fn: Any, raw_params: dict[str, str]) -> dict[str, Any]:
     """Coerce raw string params to the types expected by fn's signature.
 
     Skips 'buf', 'self', 'cls' parameters. Uses default value types
     to determine target type; falls back to guessing for params without defaults.
+
+    A value beginning with :data:`FILE_OPERAND_PREFIX` is read as an audio file
+    and passed as an ``AudioBuffer``, whatever the annotation says.
     """
+    coerced: dict[str, Any] = {}
     try:
         sig = inspect.signature(fn)
     except (ValueError, TypeError):
-        # Can't inspect: return raw params, try float coercion
-        return {k: coerce_value(v, None) for k, v in raw_params.items()}
+        sig = None
 
-    coerced: dict[str, Any] = {}
     for k, v in raw_params.items():
-        param = sig.parameters.get(k)
+        if v.startswith(FILE_OPERAND_PREFIX):
+            coerced[k] = _load_operand(v)
+            continue
+        param = sig.parameters.get(k) if sig is not None else None
         if param is not None and param.default is not inspect.Parameter.empty:
             default = param.default
             if default is None:

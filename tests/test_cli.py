@@ -1083,7 +1083,13 @@ class TestRegistryAdmission:
         with pytest.raises(KeyError):
             get_processor("nonexistent_function")
 
-    def test_every_processor_takes_buf_and_returns_audio(self):
+    def test_every_processor_takes_and_returns_audio(self):
+        """Chainable means: leading AudioBuffer in, AudioBuffer out.
+
+        Keyed on the annotation rather than the parameter name -- most
+        processors call it `buf`, but `vocoder(modulator, carrier)` and
+        `crossfade(buf_a, buf_b)` do not, and are chainable all the same.
+        """
         import inspect
 
         kinds = get_kinds()
@@ -1092,8 +1098,9 @@ class TestRegistryAdmission:
             if kind != "processor":
                 continue
             sig = inspect.signature(reg[name][0])
-            params = list(sig.parameters)
-            assert params and params[0] == "buf", name
+            params = list(sig.parameters.values())
+            assert params, name
+            assert "AudioBuffer" in str(params[0].annotation), name
             assert "AudioBuffer" in str(sig.return_annotation), name
 
     def test_cli_rejects_non_chainable(self, tmp_path):
@@ -1128,10 +1135,11 @@ class TestRegistryAdmission:
         assert "second audio buffer" in capsys.readouterr().err
 
     def test_cli_reports_multi_operand_function(self, tmp_path, capsys):
+        """`lfo` leads with a frame count, not audio, so it is not chainable."""
         wav = tmp_path / "in.wav"
         AudioBuffer.sine(440.0, frames=4800, sample_rate=48000.0).write(str(wav))
         with pytest.raises(SystemExit):
-            main(["process", str(wav), "-o", str(tmp_path / "o.wav"), "-f", "vocoder"])
+            main(["process", str(wav), "-o", str(tmp_path / "o.wav"), "-f", "irfft"])
         assert "not a chainable effect" in capsys.readouterr().err
 
 
@@ -1434,3 +1442,179 @@ class TestLevelReporting:
             ]
         )
         assert capsys.readouterr().err == ""
+
+
+class TestFileOperands:
+    """@path operands (6.7): effects needing a second buffer, from the CLI."""
+
+    @staticmethod
+    def _wav(tmp_path, name, freq=220.0, frames=9600):
+        p = tmp_path / name
+        AudioBuffer.sine(freq, frames=frames, sample_rate=48000.0).write(str(p))
+        return str(p)
+
+    def test_sidechain_compress_reachable(self, tmp_path):
+        src = self._wav(tmp_path, "bass.wav", 110.0)
+        key = self._wav(tmp_path, "kick.wav", 60.0)
+        out = tmp_path / "o.wav"
+        main(
+            [
+                "-q",
+                "process",
+                src,
+                "-o",
+                str(out),
+                "-f",
+                f"sidechain_compress:sidechain=@{key},ratio=8",
+            ]
+        )
+        assert AudioBuffer.from_file(str(out)).frames == 9600
+
+    @pytest.mark.parametrize(
+        "token",
+        [
+            "convolve:ir=@{other}",
+            "eq_match:target=@{other}",
+            "vocoder:carrier=@{other}",
+            "crossfade:buf_b=@{other},x=0.5",
+            "convolution_reverb:ir=@{other},mix=0.4",
+        ],
+    )
+    def test_multi_buffer_effects_reachable(self, tmp_path, token):
+        src = self._wav(tmp_path, "a.wav")
+        other = self._wav(tmp_path, "b.wav", 330.0)
+        out = tmp_path / "o.wav"
+        main(["-q", "process", src, "-o", str(out), "-f", token.format(other=other)])
+        assert out.is_file()
+
+    def test_missing_operand_file_reports_the_path(self, tmp_path, capsys):
+        src = self._wav(tmp_path, "a.wav")
+        with pytest.raises(SystemExit):
+            main(
+                [
+                    "process",
+                    src,
+                    "-o",
+                    str(tmp_path / "o.wav"),
+                    "-f",
+                    "convolve:ir=@/nonexistent/ir.wav",
+                ]
+            )
+        assert "not found" in capsys.readouterr().err
+
+    def test_omitted_operand_suggests_the_syntax(self, tmp_path, capsys):
+        src = self._wav(tmp_path, "a.wav")
+        with pytest.raises(SystemExit):
+            main(["process", src, "-o", str(tmp_path / "o.wav"), "-f", "convolve"])
+        err = capsys.readouterr().err
+        assert "ir=@" in err
+
+
+class TestStreamingCLI:
+    """--stream (6.2): constant-memory processing, identical output."""
+
+    @staticmethod
+    def _wav(tmp_path, name="in.wav", frames=40000):
+        p = tmp_path / name
+        rng = np.random.default_rng(0)
+        AudioBuffer(
+            rng.uniform(-0.6, 0.6, (2, frames)).astype(np.float32), sample_rate=48000.0
+        ).write(str(p))
+        return str(p)
+
+    def test_streamed_matches_whole_file(self, tmp_path):
+        src = self._wav(tmp_path)
+        chain = ["-f", "lowpass:cutoff_hz=2000", "-f", "overdrive:drive=0.3"]
+        whole, streamed = tmp_path / "w.wav", tmp_path / "s.wav"
+        main(["-q", "process", src, "-o", str(whole), *chain])
+        main(
+            [
+                "-q",
+                "process",
+                src,
+                "-o",
+                str(streamed),
+                "--stream",
+                "--block-size",
+                "1024",
+                *chain,
+            ]
+        )
+        assert np.array_equal(
+            AudioBuffer.from_file(str(whole)).data,
+            AudioBuffer.from_file(str(streamed)).data,
+        )
+
+    @pytest.mark.parametrize("block_size", [64, 4096, 1 << 20])
+    def test_block_size_does_not_change_output(self, tmp_path, block_size):
+        src = self._wav(tmp_path)
+        ref, out = tmp_path / "r.wav", tmp_path / "o.wav"
+        main(["-q", "process", src, "-o", str(ref), "-f", "highpass:cutoff_hz=200"])
+        main(
+            [
+                "-q",
+                "process",
+                src,
+                "-o",
+                str(out),
+                "--stream",
+                "--block-size",
+                str(block_size),
+                "-f",
+                "highpass:cutoff_hz=200",
+            ]
+        )
+        assert np.array_equal(
+            AudioBuffer.from_file(str(ref)).data, AudioBuffer.from_file(str(out)).data
+        )
+
+    def test_non_streamable_chain_exits_nonzero(self, tmp_path, capsys):
+        src = self._wav(tmp_path)
+        with pytest.raises(SystemExit):
+            main(
+                [
+                    "-q",
+                    "process",
+                    src,
+                    "-o",
+                    str(tmp_path / "o.wav"),
+                    "--stream",
+                    "-f",
+                    "reverb:preset=hall",
+                ]
+            )
+        assert "no streaming form" in capsys.readouterr().err
+
+    def test_caveat_reported_for_compress(self, tmp_path, capsys):
+        src = self._wav(tmp_path)
+        main(
+            [
+                "process",
+                src,
+                "-o",
+                str(tmp_path / "o.wav"),
+                "--stream",
+                "-f",
+                "compress:ratio=4",
+            ]
+        )
+        assert "unlinked" in capsys.readouterr().out
+
+    def test_streaming_works_in_batch_and_parallel(self, tmp_path):
+        srcs = [self._wav(tmp_path, f"in{i}.wav", frames=8000) for i in range(3)]
+        out = tmp_path / "out"
+        main(
+            [
+                "-q",
+                "process",
+                *srcs,
+                "-O",
+                str(out),
+                "--stream",
+                "-j",
+                "2",
+                "-f",
+                "dc_block",
+            ]
+        )
+        assert len(list(out.glob("*.wav"))) == 3

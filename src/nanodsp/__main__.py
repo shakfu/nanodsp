@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import sys
 import wave
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -241,10 +243,11 @@ def _build_chain(args: argparse.Namespace) -> list[dict]:
                 sys.exit(1)
             missing, buffers = missing_required_params(fn, params)
             if buffers:
+                first = buffers[0]
                 print(
-                    f"Cannot apply {name!r}: it needs a second audio buffer "
-                    f"({', '.join(buffers)}), which -f cannot supply. "
-                    "Use the Python API for this function.",
+                    f"{name!r} needs a second audio buffer: "
+                    f"{', '.join(buffers)}. Supply it with a file operand, "
+                    f"e.g. {name}:{first}=@other.wav",
                     file=sys.stderr,
                 )
                 sys.exit(1)
@@ -392,6 +395,68 @@ def _warn_if_clipped(
         )
 
 
+def _process_file_streaming(
+    input_path: str,
+    output_path: str,
+    steps: list[dict],
+    bit_depth: int,
+    args: argparse.Namespace,
+) -> None:
+    """Process one file a block at a time, in constant memory.
+
+    Every step is rebuilt as a stateful processor that carries its state across
+    blocks, so the result is identical to whole-file processing rather than
+    restarting each effect at every block boundary. Peak memory is one block
+    instead of the whole file.
+    """
+    from nanodsp.io import BlockWriter, read_blocks
+    from nanodsp.stream import STREAMING_CAVEATS, build_streaming_chain
+
+    blocks = read_blocks(input_path, block_size=args.block_size)
+    try:
+        first = next(blocks)
+    except StopIteration:
+        # Empty file: still produce a valid, empty output.
+        BlockWriter(output_path, 48000.0, 1, bit_depth).close()
+        return
+
+    procs = build_streaming_chain(steps, first.channels, first.sample_rate)
+    for name in dict.fromkeys(s["name"] for s in steps):
+        if name in STREAMING_CAVEATS:
+            _log(args, f"  note: --stream {name} {STREAMING_CAVEATS[name]}")
+
+    _log_verbose(
+        args,
+        f"  Streaming {input_path}: {first.channels}ch, "
+        f"{first.sample_rate:.0f} Hz, {args.block_size}-frame blocks",
+    )
+    clipped = False
+    with BlockWriter(
+        output_path, first.sample_rate, first.channels, bit_depth
+    ) as writer:
+        for block in itertools.chain([first], blocks):
+            for proc in procs:
+                block = proc.process(block)
+            if not clipped and float(np.max(np.abs(block.data), initial=0.0)) > 1.0:
+                clipped = True
+            writer.write(block)
+    if clipped:
+        _warn_clipped_stream(output_path, bit_depth, args)
+
+
+def _warn_clipped_stream(path: str, bit_depth: int, args: argparse.Namespace) -> None:
+    """Clipping warning for the streaming path, where there is no final buffer."""
+    from nanodsp.io import _FLOAT_WRITE_DEPTHS
+
+    if _verbosity(args) == QUIET or bit_depth in _FLOAT_WRITE_DEPTHS:
+        return
+    print(
+        f"Warning: {path} clips; {bit_depth}-bit output is limited to 0 dBFS. "
+        "Add a limiter, lower the gain, or write float with -b 32.",
+        file=sys.stderr,
+    )
+
+
 def _process_file(
     input_path: str,
     output_path: str,
@@ -469,11 +534,15 @@ def cmd_process(args: argparse.Namespace) -> None:
         (p, _resolve_output_path(p, args.output, args.output_dir)) for p in inputs
     ]
 
+    runner = (
+        _process_file_streaming if getattr(args, "stream", False) else _process_file
+    )
+
     if jobs <= 1:
         failures = 0
         for input_path, output_path in targets:
             try:
-                _process_file(input_path, output_path, steps, bit_depth, args)
+                runner(input_path, output_path, steps, bit_depth, args)
             except _IO_ERRORS + _DSP_ERRORS as e:
                 print(f"Error processing {input_path}: {e}", file=sys.stderr)
                 failures += 1
@@ -483,7 +552,7 @@ def cmd_process(args: argparse.Namespace) -> None:
             sys.exit(1)
         return
 
-    _run_parallel(targets, steps, bit_depth, jobs, args)
+    _run_parallel(targets, steps, bit_depth, jobs, args, runner)
 
 
 def _resolve_jobs(jobs: int | None) -> int:
@@ -501,6 +570,7 @@ def _run_parallel(
     bit_depth: int,
     jobs: int,
     args: argparse.Namespace,
+    runner: Any,
 ) -> None:
     """Process files concurrently.
 
@@ -516,9 +586,10 @@ def _run_parallel(
     failures = 0
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         futures = {
-            pool.submit(
-                _process_file, input_path, output_path, steps, bit_depth, args
-            ): (input_path, output_path)
+            pool.submit(runner, input_path, output_path, steps, bit_depth, args): (
+                input_path,
+                output_path,
+            )
             for input_path, output_path in targets
         }
         for future in as_completed(futures):
@@ -1222,6 +1293,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         metavar="N",
         help="Process N files concurrently (0 = one per CPU). Batch mode only.",
+    )
+    p_proc.add_argument(
+        "--stream",
+        action="store_true",
+        help="Process a block at a time in constant memory (large files). "
+        "Requires every effect in the chain to have a streaming form.",
+    )
+    p_proc.add_argument(
+        "--block-size",
+        type=int,
+        default=65536,
+        metavar="N",
+        help="Frames per block in --stream mode (default: 65536)",
     )
     p_proc.add_argument(
         "--stats",

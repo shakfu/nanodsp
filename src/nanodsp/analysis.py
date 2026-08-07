@@ -1,4 +1,28 @@
-"""Audio analysis: loudness, spectral features, pitch/onset detection, resampling."""
+"""Audio analysis: loudness, spectral features, pitch/onset detection, resampling.
+Examples
+--------
+>>> from nanodsp import AudioBuffer, analysis
+>>> tone = AudioBuffer.sine(1000.0, frames=48000, sample_rate=48000.0)
+
+Loudness and true peak, to ITU-R BS.1770-4:
+
+>>> round(analysis.loudness_lufs(tone.gain_db(-6.0))
+...       - analysis.loudness_lufs(tone), 1)
+-6.0
+>>> bool(analysis.true_peak_dbtp(tone) > -1.0)
+True
+
+Spectral features return one value per STFT frame:
+
+>>> centroid = analysis.spectral_centroid(tone)
+>>> centroid.ndim
+1
+
+Resampling reports the new rate:
+
+>>> analysis.resample(tone, 44100.0).sample_rate
+44100.0
+"""
 
 from __future__ import annotations
 
@@ -51,6 +75,24 @@ def loudness_lufs(buf: AudioBuffer) -> float:
     float
         Integrated loudness in LUFS. Returns ``-inf`` for silence or
         signals shorter than 400 ms.
+
+    Examples
+    --------
+    >>> from nanodsp import AudioBuffer, analysis
+
+    A full-scale sine sits a little under 0 LUFS; halving its amplitude drops
+    it by 6 dB:
+
+    >>> tone = AudioBuffer.sine(1000.0, frames=48000, sample_rate=48000.0)
+    >>> quiet = tone.gain_db(-6.0)
+    >>> round(analysis.loudness_lufs(tone) - analysis.loudness_lufs(quiet), 1)
+    6.0
+
+    Silence, and anything shorter than the 400 ms gating block, measures as
+    ``-inf``:
+
+    >>> analysis.loudness_lufs(AudioBuffer.zeros(1, 48000))
+    -inf
 
     References
     ----------

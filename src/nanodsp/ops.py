@@ -1,4 +1,30 @@
-"""Core DSP building blocks: delays, envelopes, FFT, convolution, rates, mix, LFO, numpy utils."""
+"""Core DSP building blocks: delays, envelopes, FFT, convolution, rates, mix, LFO, numpy utils.
+Examples
+--------
+>>> import numpy as np
+>>> from nanodsp import AudioBuffer, ops
+>>> buf = AudioBuffer.sine(440.0, channels=2, frames=4800, sample_rate=48000.0)
+
+Level and gain staging:
+
+>>> peak = ops.normalize_peak(buf, target_db=-3.0)
+>>> round(float(20 * np.log10(np.max(np.abs(peak.data)))), 1)
+-3.0
+
+Stereo field:
+
+>>> ops.mid_side_encode(buf).channels
+2
+>>> ops.pan(AudioBuffer.sine(440.0, frames=64), position=-1.0).channels
+2
+
+Fades and trimming:
+
+>>> ops.fade_in(buf, duration_ms=10.0).frames
+4800
+>>> float(np.abs(ops.fade_in(buf, duration_ms=10.0).data[0, 0]))
+0.0
+"""
 
 from __future__ import annotations
 
@@ -279,6 +305,23 @@ def convolve(
     ------
     ValueError
         If sample rates differ or channel counts are incompatible.
+
+    Examples
+    --------
+    >>> from nanodsp import AudioBuffer, ops
+
+    Convolving with a unit impulse returns the input unchanged:
+
+    >>> import numpy as np
+    >>> sig = AudioBuffer.sine(440.0, frames=1024)
+    >>> out = ops.convolve(sig, AudioBuffer.impulse(1, 16))
+    >>> bool(np.allclose(out.data, sig.data, atol=1e-5))
+    True
+
+    Untrimmed output runs to the full convolution length:
+
+    >>> ops.convolve(sig, AudioBuffer.impulse(1, 16), trim=False).frames
+    1039
     """
     if buf.sample_rate != ir.sample_rate:
         raise ValueError(

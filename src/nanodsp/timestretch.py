@@ -10,6 +10,23 @@ Two complementary backends:
   (Geraint Luff / Signalsmith Audio), a transient-aware, phase-vocoder-derived
   stretcher with independent pitch-shifting. Built to stay musical at modest
   ratios.
+
+Examples
+--------
+>>> from nanodsp import AudioBuffer, timestretch
+>>> buf = AudioBuffer.sine(440.0, frames=48000, sample_rate=48000.0)
+
+Signalsmith stays musical at modest ratios and decouples time from pitch:
+
+>>> timestretch.signalsmith_stretch(buf, stretch=2.0).frames
+96000
+>>> timestretch.signalsmith_stretch(buf, stretch=1.0, semitones=-7.0).frames
+48000
+
+PaulStretch is for extreme factors, where a phase vocoder breaks down:
+
+>>> bool(timestretch.paulstretch(buf, stretch=8.0).frames > 8 * 40000)
+True
 """
 
 from __future__ import annotations

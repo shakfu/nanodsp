@@ -1,4 +1,23 @@
-"""Reverb algorithms -- FDN, Schroeder, Moorer, STK reverbs, STK chorus/echo."""
+"""Reverb algorithms -- FDN, Schroeder, Moorer, STK reverbs, STK chorus/echo.
+Examples
+--------
+>>> from nanodsp import AudioBuffer
+>>> from nanodsp.effects import reverb
+>>> buf = AudioBuffer.sine(440.0, frames=9600, sample_rate=48000.0)
+
+The FDN reverb is mono-in/stereo-out, so it always returns two channels:
+
+>>> reverb.reverb(buf, preset="hall", mix=0.3).channels
+2
+
+The classic reverbs are per-channel and preserve the channel count, which also
+means they can be streamed (see :mod:`nanodsp.stream`):
+
+>>> reverb.schroeder_reverb(buf).channels
+1
+>>> reverb.moorer_reverb(buf).frames
+9600
+"""
 
 from __future__ import annotations
 
@@ -376,3 +395,125 @@ def stk_echo(
         return e.process(np.ascontiguousarray(x, dtype=np.float32))
 
     return _process_per_channel(buf, _process)
+
+
+# ---------------------------------------------------------------------------
+# Convolution reverb
+# ---------------------------------------------------------------------------
+
+
+def convolution_reverb(
+    buf: AudioBuffer,
+    ir: AudioBuffer,
+    mix: float = 0.3,
+    pre_delay_ms: float = 0.0,
+    tail: bool = False,
+    normalize: bool = True,
+) -> AudioBuffer:
+    """Convolution reverb using a recorded impulse response.
+
+    Unlike the algorithmic reverbs in this module, the character comes entirely
+    from *ir* -- a recording of a real space (or of another reverb) played back
+    through a impulse. This preserves the channel count of *buf*.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    ir : AudioBuffer
+        Impulse response, at the same sample rate as *buf*. A mono IR is applied
+        to every channel; otherwise the channel counts must match.
+    mix : float
+        Wet/dry blend, 0.0--1.0 (0.0 = fully dry, 1.0 = fully wet).
+    pre_delay_ms : float
+        Delay in milliseconds before the wet signal starts, >= 0. Pushes the
+        onset of the reverb back without moving the dry signal, which reads as a
+        larger space.
+    tail : bool
+        If True the output is extended by ``ir.frames - 1`` so the reverb tail
+        decays naturally past the end of the input. The default trims to the
+        input length, which is what a chain expects.
+    normalize : bool
+        Scale the IR to unit energy first (the default). Recorded IRs vary in
+        level by orders of magnitude, so without this *mix* would mean something
+        different for every file.
+
+    Returns
+    -------
+    AudioBuffer
+        Same channel count and sample rate as *buf*. Length is ``buf.frames``
+        unless *tail* is set.
+
+    Raises
+    ------
+    ValueError
+        If the sample rates differ, the channel counts are incompatible, *mix*
+        is outside [0, 1], or *pre_delay_ms* is negative.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from nanodsp import AudioBuffer
+    >>> from nanodsp.effects.reverb import convolution_reverb
+    >>> rng = np.random.default_rng(0)
+    >>> ir = AudioBuffer(
+    ...     (np.exp(-np.linspace(0, 6, 4000)) * rng.standard_normal(4000)).astype(
+    ...         np.float32
+    ...     )
+    ... )
+    >>> dry = AudioBuffer.sine(220.0, channels=2, frames=8000)
+    >>> wet = convolution_reverb(dry, ir, mix=0.4, pre_delay_ms=20.0)
+    >>> wet.channels, wet.frames
+    (2, 8000)
+
+    ``tail=True`` lets the reverb decay past the end of the input:
+
+    >>> convolution_reverb(dry, ir, tail=True).frames
+    11999
+    """
+    from ..ops import convolve
+
+    if not 0.0 <= mix <= 1.0:
+        raise ValueError(f"mix must be in [0, 1], got {mix}")
+    if pre_delay_ms < 0:
+        raise ValueError(f"pre_delay_ms must be >= 0, got {pre_delay_ms}")
+    if buf.sample_rate != ir.sample_rate:
+        raise ValueError(
+            f"Sample rate mismatch: buf={buf.sample_rate}, ir={ir.sample_rate}. "
+            "Resample the IR first (nanodsp.analysis.resample)."
+        )
+    if ir.frames == 0:
+        raise ValueError("impulse response is empty")
+
+    pre_samples = int(round(buf.sample_rate * pre_delay_ms / 1000.0))
+    out_frames = buf.frames + (ir.frames - 1 if tail else 0)
+
+    # Pre-delay is applied to the IR rather than the wet signal: prepending
+    # silence to the IR delays the whole response, including the tail, which is
+    # what a real pre-delay does. Delaying the wet output afterwards would clip
+    # the tail by the same amount.
+    if pre_samples:
+        ir = AudioBuffer(
+            np.pad(ir.data, ((0, 0), (pre_samples, 0))),
+            sample_rate=ir.sample_rate,
+            copy=False,
+        )
+
+    # Convolve untrimmed so the tail exists, then fit to the requested length.
+    wet = convolve(buf, ir, normalize=normalize, trim=False)
+    wet_data = wet.data[:, :out_frames]
+    if wet_data.shape[1] < out_frames:
+        wet_data = np.pad(wet_data, ((0, 0), (0, out_frames - wet_data.shape[1])))
+
+    dry_data = buf.data
+    if out_frames > buf.frames:
+        dry_data = np.pad(dry_data, ((0, 0), (0, out_frames - buf.frames)))
+
+    out = (1.0 - mix) * dry_data + mix * wet_data
+    return AudioBuffer(
+        out.astype(np.float32),
+        sample_rate=buf.sample_rate,
+        channel_layout=buf.channel_layout,
+        label=buf.label,
+        copy=False,
+    )

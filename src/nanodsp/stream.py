@@ -2,6 +2,35 @@
 
 Provides ring buffers, block processors, and overlap-add utilities for
 processing audio in fixed-size chunks.
+
+Examples
+--------
+Stateless effects rebuild their DSP object on every call, so feeding them
+successive blocks restarts the filter at each boundary.  The ``stateful_*``
+constructors keep one object per channel alive instead, so a block-by-block
+run matches whole-buffer processing exactly:
+
+>>> import numpy as np
+>>> from nanodsp import AudioBuffer
+>>> from nanodsp.stream import stateful_lowpass
+>>> buf = AudioBuffer.sine(220.0, channels=2, frames=4096, sample_rate=48000.0)
+>>> whole = stateful_lowpass(1000.0, channels=2).process(buf)
+>>> streamer = stateful_lowpass(1000.0, channels=2)
+>>> blocks = [streamer.process(buf.slice(i, i + 512)) for i in range(0, 4096, 512)]
+>>> joined = np.concatenate([b.data for b in blocks], axis=1)
+>>> bool(np.allclose(whole.data, joined, atol=1e-6))
+True
+
+A ring buffer for producer/consumer work:
+
+>>> from nanodsp.stream import RingBuffer
+>>> ring = RingBuffer(channels=1, capacity=1024)
+>>> ring.write(AudioBuffer.sine(440.0, frames=256))
+256
+>>> ring.read(100).frames
+100
+>>> ring.available_read
+156
 """
 
 from __future__ import annotations
@@ -420,40 +449,52 @@ def process_blocks(
 # ---------------------------------------------------------------------------
 
 
-class StatefulFilter(BlockProcessor):
-    """A filter that preserves per-channel state across ``process`` calls.
+class StatefulProcessor(BlockProcessor):
+    """A DSP object that preserves per-channel state across ``process`` calls.
 
     Holds one persistent DSP object per channel (built by *factory*) so that
-    audio fed in successive blocks is filtered continuously, with no per-block
+    audio fed in successive blocks is processed continuously, with no per-block
     re-initialization.  This is the key difference from the stateless functions
-    in :mod:`nanodsp.effects.filters`, which rebuild their filter on every call
-    and therefore cannot be streamed without discontinuities at block
-    boundaries.
+    in :mod:`nanodsp.effects`, which rebuild their DSP object on every call and
+    therefore cannot be streamed without discontinuities at block boundaries.
 
-    Each per-channel object must expose ``process(x) -> y`` taking and returning
-    a 1-D float32 array and advancing/retaining internal state across calls
-    (e.g. ``nanodsp._core.filters.Biquad`` or the DaisySP filters).  Because the
-    object handles arbitrary-length input itself, :meth:`process` applies it to
-    the whole buffer with no chunking or zero-padding: calling ``process``
-    repeatedly on consecutive buffers yields exactly the same result as
-    processing their concatenation in a single call.
+    Each per-channel object must expose a processing method taking and returning
+    a 1-D float32 array and retaining internal state across calls (e.g.
+    ``nanodsp._core.filters.Biquad``, the DaisySP filters and effects, or the
+    fxdsp reverbs).  Because the object handles arbitrary-length input itself,
+    :meth:`process` applies it to the whole buffer with no chunking or
+    zero-padding: calling ``process`` repeatedly on consecutive buffers yields
+    exactly the same result as processing their concatenation in a single call.
 
     Parameters
     ----------
     factory : callable
         Zero-argument callable returning a freshly-constructed, configured
-        per-channel filter object.
+        per-channel DSP object.
     channels : int
         Number of channels; one persistent object is built per channel.
     sample_rate : float
         Sample-rate metadata for output buffers.
+    apply : callable or None
+        ``(obj, x) -> y`` adapter, for objects whose processing method is not a
+        plain ``obj.process(x)`` -- the DaisySP ``Limiter``, for instance, takes
+        its pre-gain as a second argument.  Defaults to ``obj.process(x)``.
 
     Notes
     -----
     Not thread-safe.  Feed blocks from a single thread, or guard ``process`` /
-    :meth:`reset` with an external lock.  Use :func:`stateful_lowpass` and the
-    other ``stateful_*`` constructors for the common filters, or pass a custom
-    *factory* to wrap any stateful DSP object.
+    :meth:`reset` with an external lock.
+
+    Only effects whose channels are independent can be streamed this way. Two
+    kinds cannot, and have no ``stateful_*`` constructor:
+
+    - **Channel-linked dynamics.** ``compress`` and ``limit`` derive one gain
+      curve from all channels at once (see their ``link`` parameter). The
+      per-channel constructors here are the *unlinked* equivalents.
+    - **Mono-to-stereo effects.** The FDN ``reverb``, ``chorus`` and the STK
+      reverbs sum to mono and emit a decorrelated stereo pair, which does not
+      fit a per-channel model. :func:`stateful_schroeder_reverb` and
+      :func:`stateful_moorer_reverb` are true per-channel reverbs and do stream.
     """
 
     def __init__(
@@ -461,41 +502,49 @@ class StatefulFilter(BlockProcessor):
         factory: Callable[[], Any],
         channels: int = 1,
         sample_rate: float = 48000.0,
+        apply: Callable[[Any, np.ndarray], Any] | None = None,
     ):
         # block_size is nominal: process() is sample-accurate over any length.
         super().__init__(block_size=1, channels=channels, sample_rate=sample_rate)
         self._factory = factory
+        self._apply_fn = apply if apply is not None else (lambda obj, x: obj.process(x))
         self._procs = [factory() for _ in range(channels)]
 
     def _apply(self, buf: AudioBuffer) -> AudioBuffer:
         if buf.channels != self.channels:
             raise ValueError(
-                f"StatefulFilter configured for {self.channels} channel(s), "
+                f"{type(self).__name__} configured for {self.channels} channel(s), "
                 f"got {buf.channels}"
             )
         out = np.zeros_like(buf.data)
         for ch in range(buf.channels):
             out[ch] = np.asarray(
-                self._procs[ch].process(buf.ensure_1d(ch)), dtype=np.float32
+                self._apply_fn(self._procs[ch], buf.ensure_1d(ch)), dtype=np.float32
             )
         return AudioBuffer(
             out,
             sample_rate=buf.sample_rate,
             channel_layout=buf.channel_layout,
             label=buf.label,
+            copy=False,
         )
 
     def process_block(self, block: AudioBuffer) -> AudioBuffer:
-        """Filter one block, retaining state for the next call."""
+        """Process one block, retaining state for the next call."""
         return self._apply(block)
 
     def process(self, buf: AudioBuffer) -> AudioBuffer:
-        """Filter an entire buffer continuously (no chunking or padding)."""
+        """Process an entire buffer continuously (no chunking or padding)."""
         return self._apply(buf)
 
     def reset(self) -> None:
-        """Rebuild every per-channel object, clearing all filter state."""
+        """Rebuild every per-channel object, clearing all state."""
         self._procs = [self._factory() for _ in range(self.channels)]
+
+
+#: Backwards-compatible alias. The class was named for filters before it grew
+#: constructors for dynamics, modulation and reverb.
+StatefulFilter = StatefulProcessor
 
 
 def _biquad_factory(
@@ -616,3 +665,383 @@ def stateful_moog_ladder(
         return f
 
     return StatefulFilter(factory, channels=channels, sample_rate=sample_rate)
+
+
+# ---------------------------------------------------------------------------
+# Stateful dynamics
+#
+# These are the *unlinked* equivalents of nanodsp.effects.dynamics.compress /
+# limit: each channel gets its own detector. Linked detection needs all channels
+# at once, which the per-channel model cannot express -- see StatefulProcessor's
+# notes.
+# ---------------------------------------------------------------------------
+
+
+def stateful_compress(
+    ratio: float = 4.0,
+    threshold: float = -20.0,
+    attack: float = 0.01,
+    release: float = 0.1,
+    makeup: float = 0.0,
+    auto_makeup: bool = False,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming compressor, one detector per channel.
+
+    See :func:`nanodsp.effects.dynamics.compress` for the parameters. Unlike
+    that function this is per-channel only; there is no linked mode.
+    """
+    from nanodsp._helpers import _dsy_dyn
+
+    def factory() -> Any:
+        c = _dsy_dyn.Compressor()
+        c.init(sample_rate)
+        c.set_ratio(ratio)
+        c.set_threshold(threshold)
+        c.set_attack(attack)
+        c.set_release(release)
+        c.set_makeup(makeup)
+        c.auto_makeup(auto_makeup)
+        return c
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_limit(
+    pre_gain: float = 1.0,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming peak limiter, one detector per channel.
+
+    See :func:`nanodsp.effects.dynamics.limit`. The pre-gain is applied through
+    the *apply* adapter, since the underlying object takes it per call rather
+    than as configuration.
+    """
+    from nanodsp._helpers import _dsy_dyn
+
+    def factory() -> Any:
+        lm = _dsy_dyn.Limiter()
+        lm.init()
+        return lm
+
+    return StatefulProcessor(
+        factory,
+        channels=channels,
+        sample_rate=sample_rate,
+        apply=lambda obj, x: obj.process(x, pre_gain),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stateful filters (DaisySP)
+# ---------------------------------------------------------------------------
+
+
+def stateful_tone_lowpass(
+    cutoff_hz: float,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming one-pole lowpass (see :func:`nanodsp.effects.filters.tone_lowpass`)."""
+    from nanodsp._helpers import _dsy_filt
+
+    def factory() -> Any:
+        f = _dsy_filt.Tone()
+        f.init(sample_rate)
+        f.set_freq(cutoff_hz)
+        return f
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_tone_highpass(
+    cutoff_hz: float,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming one-pole highpass (see :func:`nanodsp.effects.filters.tone_highpass`)."""
+    from nanodsp._helpers import _dsy_filt
+
+    def factory() -> Any:
+        f = _dsy_filt.ATone()
+        f.init(sample_rate)
+        f.set_freq(cutoff_hz)
+        return f
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_ladder_filter(
+    cutoff_hz: float,
+    resonance: float = 0.0,
+    mode: str = "lp24",
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming DaisySP ladder filter (see :func:`nanodsp.effects.filters.ladder_filter`)."""
+    from nanodsp._helpers import _LADDER_MODE_MAP, _dsy_filt
+
+    if mode not in _LADDER_MODE_MAP:
+        raise ValueError(
+            f"Unknown ladder mode {mode!r}, valid: {list(_LADDER_MODE_MAP)}"
+        )
+    # The map holds ints; the binding is typed to the enum, which accepts them.
+    resolved: Any = _LADDER_MODE_MAP[mode]
+
+    def factory() -> Any:
+        f = _dsy_filt.LadderFilter()
+        f.init(sample_rate)
+        f.set_freq(cutoff_hz)
+        f.set_res(resonance)
+        f.set_filter_mode(resolved)
+        return f
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+# ---------------------------------------------------------------------------
+# Stateful effects and utilities
+# ---------------------------------------------------------------------------
+
+
+def stateful_dc_block(
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming DC blocker (see :func:`nanodsp.effects.composed.dc_block`)."""
+    from nanodsp._helpers import _dsy_util
+
+    def factory() -> Any:
+        d = _dsy_util.DcBlock()
+        d.init(sample_rate)
+        return d
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_overdrive(
+    drive: float = 0.5,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming overdrive (see :func:`nanodsp.effects.daisysp.overdrive`)."""
+    from nanodsp._helpers import _dsy_fx
+
+    def factory() -> Any:
+        o = _dsy_fx.Overdrive()
+        o.init()
+        o.set_drive(drive)
+        return o
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_tremolo(
+    freq: float = 5.0,
+    depth: float = 0.5,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming tremolo (see :func:`nanodsp.effects.daisysp.tremolo`)."""
+    from nanodsp._helpers import _dsy_fx
+
+    def factory() -> Any:
+        t = _dsy_fx.Tremolo()
+        t.init(sample_rate)
+        t.set_freq(freq)
+        t.set_depth(depth)
+        return t
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_autowah(
+    wah: float = 0.5,
+    dry_wet: float = 0.5,
+    level: float = 0.5,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming auto-wah (see :func:`nanodsp.effects.composed.autowah`)."""
+    from nanodsp._helpers import _dsy_fx
+
+    def factory() -> Any:
+        a = _dsy_fx.Autowah()
+        a.init(sample_rate)
+        a.set_wah(wah)
+        a.set_dry_wet(dry_wet)
+        a.set_level(level)
+        return a
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_flanger(
+    lfo_freq: float = 0.3,
+    lfo_depth: float = 0.5,
+    delay_ms: float = 5.0,
+    feedback: float = 0.2,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming flanger (see :func:`nanodsp.effects.daisysp.flanger`)."""
+    from nanodsp._helpers import _dsy_fx
+
+    def factory() -> Any:
+        f = _dsy_fx.Flanger()
+        f.init(sample_rate)
+        f.set_lfo_freq(lfo_freq)
+        f.set_lfo_depth(lfo_depth)
+        f.set_delay_ms(delay_ms)
+        f.set_feedback(feedback)
+        return f
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_phaser(
+    lfo_freq: float = 0.3,
+    lfo_depth: float = 0.5,
+    freq: float = 400.0,
+    feedback: float = 0.2,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming phaser (see :func:`nanodsp.effects.daisysp.phaser`)."""
+    from nanodsp._helpers import _dsy_fx
+
+    def factory() -> Any:
+        p = _dsy_fx.Phaser()
+        p.init(sample_rate)
+        p.set_lfo_freq(lfo_freq)
+        p.set_lfo_depth(lfo_depth)
+        p.set_freq(freq)
+        p.set_feedback(feedback)
+        return p
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_schroeder_reverb(
+    feedback: float = 0.7,
+    diffusion: float = 0.5,
+    mod_depth: float = 0.0,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming Schroeder reverb (see :func:`nanodsp.effects.reverb.schroeder_reverb`).
+
+    A true per-channel reverb, unlike the FDN ``reverb``, so it streams.
+    """
+    from nanodsp._core import fxdsp as _fxdsp
+
+    def factory() -> Any:
+        rev = _fxdsp.SchroederReverb()
+        rev.init(float(sample_rate))
+        rev.feedback = feedback
+        rev.diffusion = diffusion
+        rev.set_mod_depth(mod_depth)
+        return rev
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+def stateful_moorer_reverb(
+    feedback: float = 0.7,
+    diffusion: float = 0.7,
+    mod_depth: float = 0.1,
+    channels: int = 1,
+    sample_rate: float = 48000.0,
+) -> StatefulProcessor:
+    """Streaming Moorer reverb (see :func:`nanodsp.effects.reverb.moorer_reverb`)."""
+    from nanodsp._core import fxdsp as _fxdsp
+
+    def factory() -> Any:
+        rev = _fxdsp.MoorerReverb()
+        rev.init(float(sample_rate))
+        rev.feedback = feedback
+        rev.diffusion = diffusion
+        rev.set_mod_depth(mod_depth)
+        return rev
+
+    return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
+
+
+# ---------------------------------------------------------------------------
+# CLI effect name -> stateful constructor
+# ---------------------------------------------------------------------------
+
+#: Maps a chainable effect name (as accepted by ``nanodsp process -f``) to the
+#: constructor that streams it. Only effects whose channels are independent
+#: appear here; see :class:`StatefulProcessor` for what cannot stream and why.
+#: Parameter names match the stateless function, so coerced CLI parameters pass
+#: straight through.
+STREAMABLE: dict[str, Callable[..., StatefulProcessor]] = {
+    "lowpass": stateful_lowpass,
+    "highpass": stateful_highpass,
+    "bandpass": stateful_bandpass,
+    "notch": stateful_notch,
+    "moog_ladder": stateful_moog_ladder,
+    "ladder_filter": stateful_ladder_filter,
+    "tone_lowpass": stateful_tone_lowpass,
+    "tone_highpass": stateful_tone_highpass,
+    "compress": stateful_compress,
+    "limit": stateful_limit,
+    "dc_block": stateful_dc_block,
+    "overdrive": stateful_overdrive,
+    "tremolo": stateful_tremolo,
+    "autowah": stateful_autowah,
+    "flanger": stateful_flanger,
+    "phaser": stateful_phaser,
+    "schroeder_reverb": stateful_schroeder_reverb,
+    "moorer_reverb": stateful_moorer_reverb,
+}
+
+#: Effects in :data:`STREAMABLE` whose streaming form differs from the
+#: whole-buffer form in a way the user should be told about, rather than
+#: silently getting different audio.
+STREAMING_CAVEATS: dict[str, str] = {
+    "compress": "runs unlinked (per-channel detectors); the whole-buffer form links channels by default",
+    "limit": "runs unlinked (per-channel detectors); the whole-buffer form links channels by default",
+}
+
+
+def build_streaming_chain(
+    steps: "list[dict]", channels: int, sample_rate: float
+) -> list[StatefulProcessor]:
+    """Build stateful processors for a CLI chain.
+
+    Parameters
+    ----------
+    steps : list of dict
+        Chain steps as produced by the CLI, each with ``name`` and ``params``.
+    channels, sample_rate
+        Taken from the file being processed.
+
+    Raises
+    ------
+    ValueError
+        If any step has no streaming equivalent, naming all of them at once so
+        the user can fix the whole chain in one go.
+    """
+    missing = [s["name"] for s in steps if s["name"] not in STREAMABLE]
+    if missing:
+        raise ValueError(
+            f"cannot stream: {', '.join(sorted(set(missing)))} "
+            f"{'has' if len(set(missing)) == 1 else 'have'} no streaming form. "
+            f"Streamable effects: {', '.join(sorted(STREAMABLE))}"
+        )
+    procs = []
+    for step in steps:
+        params = dict(step["params"])
+        # The whole-buffer compressor takes `link`, which per-channel streaming
+        # cannot honour; STREAMING_CAVEATS reports the difference.
+        params.pop("link", None)
+        procs.append(
+            STREAMABLE[step["name"]](
+                **params, channels=channels, sample_rate=sample_rate
+            )
+        )
+    return procs

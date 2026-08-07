@@ -1,4 +1,16 @@
-"""Saturation and antialiased waveshaping."""
+"""Saturation and antialiased waveshaping.
+Examples
+--------
+>>> import numpy as np
+>>> from nanodsp import AudioBuffer
+>>> from nanodsp.effects import saturation
+>>> hot = AudioBuffer(np.full((1, 512), 0.95, dtype=np.float32))
+>>> out = saturation.saturate(hot, drive=0.5, mode="tape")
+>>> out.frames
+512
+>>> bool(np.max(np.abs(saturation.aa_hard_clip(hot, drive=4.0).data)) <= 1.5)
+True
+"""
 
 from __future__ import annotations
 

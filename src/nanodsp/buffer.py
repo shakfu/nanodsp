@@ -42,6 +42,30 @@ class AudioBuffer:
     ------
     ValueError
         If *data* is not 1D or 2D, or if *sample_rate* is not positive.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from nanodsp import AudioBuffer
+    >>> buf = AudioBuffer(np.zeros((2, 1024), dtype=np.float32), sample_rate=44100)
+    >>> buf.channels, buf.frames, buf.sample_rate
+    (2, 1024, 44100.0)
+    >>> buf.duration
+    0.023219954648526078
+
+    1-D input is treated as mono:
+
+    >>> AudioBuffer(np.zeros(512, dtype=np.float32)).channels
+    1
+
+    The buffer owns its samples, so writing through it never touches the
+    caller's array:
+
+    >>> src = np.zeros((1, 4), dtype=np.float32)
+    >>> buf = AudioBuffer(src)
+    >>> buf.data[0, 0] = 1.0
+    >>> float(src[0, 0])
+    0.0
     """
 
     __slots__ = ("_data", "_sample_rate", "_channel_layout", "_label")
@@ -263,7 +287,17 @@ class AudioBuffer:
         sample_rate: float = 48000.0,
         **kw,
     ) -> AudioBuffer:
-        """Unit impulse at frame 0 in every channel."""
+        """Unit impulse at frame 0 in every channel.
+
+        Useful for measuring a filter's response.
+
+        Examples
+        --------
+        >>> from nanodsp import AudioBuffer
+        >>> imp = AudioBuffer.impulse(frames=8)
+        >>> imp.data[0]
+        array([1., 0., 0., 0., 0., 0., 0., 0.], dtype=float32)
+        """
         arr = np.zeros((channels, frames), dtype=np.float32)
         arr[:, 0] = 1.0
         return cls(arr, sample_rate=sample_rate, **kw)
@@ -315,6 +349,16 @@ class AudioBuffer:
         """Mix down to mono.
 
         *method*: ``'mean'`` (default), ``'left'``, ``'right'``, ``'sum'``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from nanodsp import AudioBuffer
+        >>> stereo = AudioBuffer(np.array([[1.0, 1.0], [0.0, 0.0]], dtype=np.float32))
+        >>> stereo.to_mono().data
+        array([[0.5, 0.5]], dtype=float32)
+        >>> stereo.to_mono("left").data
+        array([[1., 1.]], dtype=float32)
         """
         if method == "mean":
             mixed = self._data.mean(axis=0, keepdims=True)
@@ -333,7 +377,14 @@ class AudioBuffer:
         )
 
     def to_channels(self, n: int) -> AudioBuffer:
-        """Upmix mono to *n* channels by copying, or error if incompatible."""
+        """Upmix mono to *n* channels by copying, or error if incompatible.
+
+        Examples
+        --------
+        >>> from nanodsp import AudioBuffer
+        >>> AudioBuffer.sine(440.0, frames=64).to_channels(2).channels
+        2
+        """
         if self.channels == n:
             return self.copy()
         if self.channels != 1:
@@ -349,7 +400,14 @@ class AudioBuffer:
         )
 
     def split(self) -> list[AudioBuffer]:
-        """Split into a list of mono AudioBuffers, one per channel."""
+        """Split into a list of mono AudioBuffers, one per channel.
+
+        Examples
+        --------
+        >>> from nanodsp import AudioBuffer
+        >>> [b.channels for b in AudioBuffer.sine(440.0, channels=2, frames=64).split()]
+        [1, 1]
+        """
         return [
             AudioBuffer(
                 self._data[i : i + 1].copy(),
@@ -498,7 +556,16 @@ class AudioBuffer:
         )
 
     def gain_db(self, db: float) -> AudioBuffer:
-        """Return a new buffer scaled by ``10**(db/20)``."""
+        """Return a new buffer scaled by ``10**(db/20)``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from nanodsp import AudioBuffer
+        >>> buf = AudioBuffer(np.ones((1, 4), dtype=np.float32))
+        >>> round(float(buf.gain_db(-6.0).data[0, 0]), 3)
+        0.501
+        """
         factor = np.float32(10.0 ** (db / 20.0))
         return AudioBuffer(
             self._data * factor,
@@ -513,6 +580,18 @@ class AudioBuffer:
         """Chain a DSP function: ``buf.pipe(dsp.lowpass, 5000)``.
 
         Calls ``fn(self, *args, **kwargs)`` and validates the return type.
+
+        Examples
+        --------
+        >>> from nanodsp import AudioBuffer
+        >>> from nanodsp.effects.filters import lowpass, highpass
+        >>> out = (
+        ...     AudioBuffer.sine(440.0, frames=1024)
+        ...     .pipe(highpass, cutoff_hz=80.0)
+        ...     .pipe(lowpass, cutoff_hz=8000.0)
+        ... )
+        >>> out.frames
+        1024
         """
         result = fn(self, *args, **kwargs)
         if not isinstance(result, AudioBuffer):
