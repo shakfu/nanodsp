@@ -97,3 +97,6 @@ nav:
     - Synthesis: api/synthesis.md
     - Analysis: api/analysis.md
     - Streaming: api/stream.md
+  - Development:
+    - Investigations:
+      - "DaisySP chorus anomaly": devs/daisysp-chorus-anomaly.md

@@ -57,13 +57,13 @@
 ## Known issues
 
 - [ ] **`daisysp.chorus` anomaly is unexplained.** An uninitialised read of
-  `lfo_freq_` in the DaisySP modulation family was found and patched (see
-  `thirdparty/VERSIONS.md`), but it was never demonstrated to be the cause of
-  the one observed 0.30-amplitude divergence that started the investigation; an
-  attempt to force it by poisoning the heap failed to reproduce the anomaly
-  either with or without the patch. `chorus`, `flanger` and `phaser` are pinned
-  in `tests/GOLDEN.json`. If one of those fingerprints ever moves, the
-  hypothesis was wrong and the real cause is still open.
+  `lfo_freq_` in the DaisySP modulation family was found and patched, but was
+  never demonstrated to be the cause of the observed divergence that started the
+  investigation. `chorus`, `flanger` and `phaser` are pinned in
+  `tests/GOLDEN.json`; if one of those fingerprints ever moves, the hypothesis
+  was wrong and the real cause is still open. Full write-up, including what was
+  ruled out and how to investigate a recurrence:
+  [`docs/devs/daisysp-chorus-anomaly.md`](docs/devs/daisysp-chorus-anomaly.md).
 
 - [ ] **Vendored patches must be re-applied on upgrade.** Six local fixes live
   in `thirdparty/` (two STK heap overflows, STK wall-clock seeding, and three

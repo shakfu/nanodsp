@@ -42,6 +42,11 @@ The DaisySP patches are one line each and could not be done through the
 force-include shim in `cmake/daisysp_compat.h`, which can only add
 declarations, not alter a function body.
 
+The chorus/flanger/phaser fix has a longer write-up in
+`docs/devs/daisysp-chorus-anomaly.md`: it records what the original symptom was,
+what was ruled out, and -- importantly -- that the fix has *not* been shown to
+be the cause of that symptom.
+
 Regression coverage: `tests/test_stk_determinism.py` pins the seeding
 behaviour, and `tests/GOLDEN.json` pins the numeric output of chorus, flanger
 and phaser.
