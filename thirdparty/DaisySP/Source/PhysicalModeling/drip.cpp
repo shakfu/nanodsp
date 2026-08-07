@@ -193,12 +193,19 @@ float Drip::Process(bool trig)
     inputs1 -= outputs10_ * coeffs10_;
     inputs1 -= outputs11_ * coeffs11_;
     outputs11_ = outputs10_;
-    outputs10_ = inputs1_;
+    // nanodsp local patch: upstream writes the *members* inputs1_ / inputs2_
+    // here instead of the locals inputs1 / inputs2 computed just above -- a
+    // stray trailing underscore. Those members are never assigned anywhere, so
+    // two of the three resonator bands were fed uninitialised memory and the
+    // values actually computed for them were discarded. Band 0 immediately
+    // above uses the local, which is the intended form.
+    // See thirdparty/VERSIONS.md.
+    outputs10_ = inputs1;
     data += gains1_ * outputs10_;
     inputs2 -= outputs20_ * coeffs20_;
     inputs2 -= outputs21_ * coeffs21_;
     outputs21_ = outputs20_;
-    outputs20_ = inputs2_;
+    outputs20_ = inputs2;
     data += gains2_ * outputs20_;
 
     finalZ2_ = finalZ1_;

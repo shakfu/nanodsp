@@ -68,16 +68,25 @@ def test_backend_count_matches_table():
 
 
 def test_package_version_matches_pyproject():
-    """__version__ is a hand-maintained duplicate of the pyproject version."""
+    """__version__ is a hand-maintained duplicate of the pyproject version.
+
+    The version is read with a regex rather than ``tomllib``, which is 3.11+
+    while this package supports 3.10, and pulling in ``tomli`` for one field is
+    not worth a test dependency.
+    """
     import re
-    import tomllib
 
     import nanodsp
 
     pyproject = ROOT / "pyproject.toml"
     if not pyproject.is_file():
         pytest.skip("pyproject.toml not present")
-    declared = tomllib.loads(pyproject.read_text())["project"]["version"]
+    text = pyproject.read_text(encoding="utf-8")
+    # First `version = "..."` after the [project] table header.
+    project_table = text.split("[project]", 1)[-1]
+    m = re.search(r'^version\s*=\s*"([^"]+)"', project_table, re.MULTILINE)
+    assert m, "could not find the version in pyproject.toml [project]"
+    declared = m.group(1)
     assert nanodsp.__version__ == declared, (
         f"nanodsp.__version__ is {nanodsp.__version__!r} but pyproject.toml "
         f"declares {declared!r}; bump both."

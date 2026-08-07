@@ -976,7 +976,7 @@ options:
 
 ```bash
 make build    # rebuild extension after C++ changes
-make test     # run 2326 tests
+make test     # run 2342 tests
 make demos    # run all 20 demo scripts
 make qa       # test + lint + typecheck + format
 make coverage # tests with coverage report

@@ -30,6 +30,8 @@ to notice when a backend moves under us.
 from __future__ import annotations
 
 import json
+import platform
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -275,8 +277,32 @@ def _wav_roundtrip(bit_depth: int) -> AudioBuffer:
     return read_wav_bytes(write_wav_bytes(STEREO, bit_depth=bit_depth))
 
 
-def _compute_all() -> dict[str, dict]:
-    return {name: _fingerprint(fn()) for name, fn in sorted(CASES.items())}
+def _platform_key() -> str:
+    """Identity of the platform a fixture set is valid for.
+
+    The corpus is reference-platform-scoped, not universal. Two things make the
+    numbers legitimately differ across platforms, and neither is a regression:
+
+    - Several voices draw from the C library ``rand()``, and glibc's generator
+      is not macOS's, so an explicit seed reproduces a render only within a
+      platform.
+    - The FFT-heavy paths (phase vocoder, `signalsmith_stretch`) accumulate
+      enough floating-point difference across libm and compiler versions to
+      exceed any tolerance tight enough to be useful. Measured on CI: the
+      `spectral.pitch_shift` peak moved 0.18% between macOS and Linux, while
+      every case matched between two different macOS machines.
+
+    So the fixtures are stamped, and a mismatched platform skips rather than
+    fails. Regenerate locally to get coverage on yours.
+    """
+    return f"{sys.platform}-{platform.machine()}"
+
+
+def _compute_all() -> dict:
+    return {
+        "platform": _platform_key(),
+        "cases": {name: _fingerprint(fn()) for name, fn in sorted(CASES.items())},
+    }
 
 
 def _load_golden() -> dict[str, dict]:
@@ -287,7 +313,14 @@ def _load_golden() -> dict[str, dict]:
             "with `python tests/test_golden.py --update` if this is a new "
             "checkout that never had one."
         )
-    return json.loads(GOLDEN_PATH.read_text())
+    stored = json.loads(GOLDEN_PATH.read_text())
+    if stored.get("platform") != _platform_key():
+        pytest.skip(
+            f"fixtures were generated on {stored.get('platform')!r}, running on "
+            f"{_platform_key()!r}; regenerate with "
+            "`python tests/test_golden.py --update` to pin this platform"
+        )
+    return stored["cases"]
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -367,12 +400,13 @@ def test_fingerprint_detects_a_length_change() -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
-
     if "--update" in sys.argv:
-        prints = _compute_all()
-        GOLDEN_PATH.write_text(json.dumps(prints, indent=2, sort_keys=True) + "\n")
-        print(f"Wrote {len(prints)} fingerprints to {GOLDEN_PATH}")
+        data = _compute_all()
+        GOLDEN_PATH.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        print(
+            f"Wrote {len(data['cases'])} fingerprints for {data['platform']} "
+            f"to {GOLDEN_PATH}"
+        )
     else:
         print(__doc__)
         print("Run with --update to regenerate the corpus.")

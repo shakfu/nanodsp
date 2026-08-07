@@ -21,7 +21,11 @@ of what ran before it.
 from __future__ import annotations
 
 import hashlib
+import subprocess
+import sys
+import textwrap
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -84,9 +88,17 @@ def _digest(buf) -> str:
 def across_second_boundary():
     """Digests of every subject before and after one wall-clock second boundary.
 
-    Module-scoped so the ~1 s wait is paid once for the whole module rather than
-    once per test.
+    Each subject is rendered once and discarded first, so ``before`` is a warm
+    call. Without that, ``before`` would be the first call in the process and
+    ``after`` the second, and this test would fail for a voice whose *first*
+    render differs -- which is a different defect, covered by
+    :func:`test_first_call_matches_later_calls`. Keeping the two claims in
+    separate tests means a failure says which one broke.
+
+    Module-scoped so the ~1 s wait is paid once for the whole module.
     """
+    for fn in SUBJECTS.values():
+        fn()
     before = {name: _digest(fn()) for name, fn in SUBJECTS.items()}
     start = int(time.time())
     while int(time.time()) == start:
@@ -141,3 +153,38 @@ def test_set_random_seed_is_exposed():
     b = _digest(synthesis.pluck(2400, freq=200.0, sample_rate=SR, seed=1))
     # The per-call seed wins over any earlier global seeding.
     assert a == b
+
+
+@pytest.mark.parametrize("name", sorted(SUBJECTS))
+def test_first_call_matches_later_calls(name):
+    """A voice's very first render in a process must match every later one.
+
+    This catches uninitialised DSP state, which is otherwise invisible: freshly
+    mapped pages read as zero, so the cold render is self-consistent across
+    runs, while every later render in the same process reuses the freed block of
+    its predecessor and converges on a different value. Two DaisySP voices were
+    found this way -- see thirdparty/VERSIONS.md.
+
+    Run in a subprocess because "first call in the process" cannot be recreated
+    once anything in this one has already touched the voice.
+    """
+    src = textwrap.dedent(f"""
+        import hashlib
+        import numpy as np
+        from nanodsp import synthesis
+        from tests.test_stk_determinism import SUBJECTS, _digest
+        fn = SUBJECTS[{name!r}]
+        print(_digest(fn()), _digest(fn()), _digest(fn()))
+    """)
+    proc = subprocess.run(
+        [sys.executable, "-c", src],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parent.parent,
+    )
+    assert proc.returncode == 0, proc.stderr
+    cold, warm, warm2 = proc.stdout.split()
+    assert cold == warm == warm2, (
+        f"{name}: first render differs from later ones "
+        f"(cold={cold[:12]}, warm={warm[:12]}) -- uninitialised state"
+    )

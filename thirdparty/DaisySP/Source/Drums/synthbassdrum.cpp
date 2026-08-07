@@ -51,6 +51,15 @@ void SyntheticBassDrum::Init(float sample_rate)
     fm_lp_                = 0.0f;
     body_env_lp_          = 0.0f;
     body_env_             = 0.0f;
+    // nanodsp local patch: upstream zeroes the body envelope state but not its
+    // transient counterpart. transient_env_lp_ is only ever written through
+    // fonepole(), which reads the previous value first, so the first Process()
+    // call after construction reads uninitialised memory. Freshly mapped pages
+    // read as zero, so a cold render looked deterministic while every later one
+    // in the same process differed -- the object reuses the freed block of its
+    // predecessor. See thirdparty/VERSIONS.md.
+    transient_env_        = 0.0f;
+    transient_env_lp_     = 0.0f;
     body_env_pulse_width_ = 0;
     fm_pulse_width_       = 0;
     tone_lp_              = 0.0f;
