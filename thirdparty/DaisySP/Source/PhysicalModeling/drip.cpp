@@ -23,9 +23,21 @@ int Drip::my_random(int max)
 
 float Drip::noise_tick()
 {
-    float temp;
-    temp = 1.0f * rand() - 1073741823.5f;
-    return temp * (1.0f / 1073741823.0f);
+    // nanodsp local patch: upstream hard-codes glibc's RAND_MAX/2 as the
+    // centre and scale (`rand() - 1073741823.5f`, scaled by
+    // `1/1073741823.0f`). MSVC's RAND_MAX is 32767, so on Windows every draw
+    // landed at the bottom of the assumed range and this returned a constant
+    // -0.99997 instead of white noise. That turns the excitation into DC and
+    // pins `gains{0,1,2}_ = fabsf(noise_tick())` at 1.0, which drives the
+    // three WUTR_RESON=0.9985 resonators far past unity: the generator peaked
+    // at 28.7 against a limit of 10.
+    //
+    // `kRandFrac` (dsp.h, already included) is `1.f / RAND_MAX` and is how
+    // every other DaisySP noise source scales `rand()`. On a platform where
+    // RAND_MAX is 2147483647 -- glibc and macOS -- this is bit-identical to
+    // the original for all 2^31 possible draws, so it does not move any
+    // stored fingerprint.
+    return 2.0f * rand() * kRandFrac - 1.0f;
 }
 
 void Drip::Init(float sample_rate, float dettack)

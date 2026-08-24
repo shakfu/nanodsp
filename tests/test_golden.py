@@ -69,6 +69,36 @@ _BLOCKS = 64  # per-case RMS resolution
 _RTOL = 1e-4
 _ATOL = 1e-6  # ~ -120 dBFS, below any audible or meaningful difference
 
+# Two cases cannot be held to _RTOL on a toolchain other than the one that
+# generated their fingerprint, and it is a property of the algorithm rather
+# than of the build.
+#
+# A phase vocoder does not just accumulate rounding error, it makes discrete
+# decisions from it: both of these track spectral peaks and assign each bin to
+# one, so a difference in the last bits of a magnitude flips a bin from one
+# peak's phase advance to another's, and the output changes by far more than
+# the difference that caused it. Everything else here is a smooth function of
+# its input, and a smooth function keeps small perturbations small.
+#
+# The split is measured, not assumed. Perturbing the input by 1 part in 10^7 --
+# float32 rounding noise -- and re-fingerprinting moves 66 of the 68 cases by
+# at most 1e-5, two orders below _RTOL, and moves these two by 4.1e-3
+# (`spectral.pitch_shift`) and 1.9e-3 (`timestretch.signalsmith`). A real
+# toolchain difference is a larger perturbation than that: CI has been seen at
+# 6.2e-4 and 1.2e-2 respectively against the fixtures generated on a developer
+# machine of the same platform. The 5e-2 below is that worst observation with
+# roughly 4x headroom.
+#
+# What this costs: on these two cases the corpus no longer notices sub-percent
+# drift, only an algorithm changing under us. That is the whole of what is
+# available -- a tolerance tight enough to catch more is one that fails on
+# every machine that did not generate the fixture, which is what it did.
+_CHAOTIC_RTOL = 5e-2
+_CHAOTIC = {
+    "spectral.pitch_shift",
+    "timestretch.signalsmith",
+}
+
 
 def _signal(channels: int = 1, seed: int = 0) -> AudioBuffer:
     """Deterministic test signal: tone plus noise plus a transient.
@@ -139,7 +169,13 @@ def _fingerprint(value) -> dict:
     }
 
 
-def _compare(got: dict, want: dict) -> str | None:
+def _rtol_for(name: str) -> float:
+    """Tolerance this case is pinned at. See _CHAOTIC above for the two
+    exceptions and the measurements that set them."""
+    return _CHAOTIC_RTOL if name in _CHAOTIC else _RTOL
+
+
+def _compare(got: dict, want: dict, rtol: float = _RTOL) -> str | None:
     """Return a human-readable reason the fingerprints differ, or None."""
     if got["shape"] != want["shape"] or got["n"] != want["n"]:
         return (
@@ -147,12 +183,12 @@ def _compare(got: dict, want: dict) -> str | None:
             f"{got['shape']} ({got['n']} values)"
         )
     for key in ("peak", "mean"):
-        if not np.isclose(got[key], want[key], rtol=_RTOL, atol=_ATOL):
+        if not np.isclose(got[key], want[key], rtol=rtol, atol=_ATOL):
             return f"{key} changed: {want[key]:.8g} -> {got[key]:.8g}"
     a, b = np.asarray(got["rms"]), np.asarray(want["rms"])
     if a.shape != b.shape:
         return f"block count changed: {b.shape[0]} -> {a.shape[0]}"
-    close = np.isclose(a, b, rtol=_RTOL, atol=_ATOL)
+    close = np.isclose(a, b, rtol=rtol, atol=_ATOL)
     if not close.all():
         i = int(np.argmax(~close))
         return (
@@ -311,6 +347,11 @@ def _platform_key() -> str:
       `spectral.pitch_shift` peak moved 0.18% between macOS and Linux, while
       every case matched between two different macOS machines.
 
+      Platform scoping alone does not cover this one, because `sys.platform`
+      and the machine type do not identify a toolchain: two Linux x86_64 builds
+      with different compilers land in the same block and still disagree. Those
+      cases carry a looser per-case tolerance instead -- see `_CHAOTIC`.
+
     So fingerprints are stored per platform and a platform with no block skips
     rather than fails. Regenerate locally to add yours; `--update` merges, so it
     keeps the blocks other machines contributed. Commit every platform you can
@@ -379,15 +420,32 @@ def test_golden_output(name: str) -> None:
             f"No stored fingerprint for {name!r}. If this is a new case, "
             "regenerate with `python tests/test_golden.py --update`."
         )
-    reason = _compare(_fingerprint(CASES[name]()), golden[name])
+    rtol = _rtol_for(name)
+    reason = _compare(_fingerprint(CASES[name]()), golden[name], rtol)
     assert reason is None, (
         f"Output of {name!r} changed: {reason}\n"
         "This is not necessarily a bug -- it means the numbers moved beyond "
-        f"the tolerance (rtol={_RTOL}, atol={_ATOL}), which platform noise "
+        f"the tolerance (rtol={rtol}, atol={_ATOL}), which platform noise "
         "does not. Confirm the change was intended (a vendored backend "
         "upgrade, a deliberate DSP fix), then regenerate with "
         "`python tests/test_golden.py --update` and include the GOLDEN.json "
         "diff in the same commit."
+    )
+
+
+def test_chaotic_set_has_no_stale_entries() -> None:
+    """A relaxed tolerance must name a case that still exists.
+
+    `_CHAOTIC` holds the two cases that cannot be pinned at `_RTOL` off the
+    machine that generated their fixtures. Renaming one would silently move it
+    back to the strict tolerance and turn CI red on a difference that is not a
+    regression, which is the failure this set exists to prevent.
+    """
+    orphans = sorted(_CHAOTIC - set(CASES))
+    assert not orphans, (
+        f"_CHAOTIC names cases that no longer exist: {orphans}. Either the "
+        "case was renamed -- update the set -- or it was removed, in which "
+        "case drop the entry."
     )
 
 
