@@ -22,8 +22,11 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 ## Requirements
 
 - Python >= 3.10
+
 - numpy
+
 - C++17 compiler
+
 - CMake >= 3.15
 
 ## Install
@@ -271,9 +274,7 @@ Read and write WAV and FLAC with zero external dependencies (WAV is parsed and w
 | WAV extensible | wrapping any of the above | -- |
 | FLAC | 16/24-bit | 16/24-bit |
 
-`bit_depth` selects the encoding on write: 16 and 24 are signed PCM (clipped to
-[-1, 1] and rounded to nearest), while 32 and 64 are IEEE float, written
-verbatim so values above full scale survive a gain stage intact.
+`bit_depth` selects the encoding on write: 16 and 24 are signed PCM (clipped to [-1, 1] and rounded to nearest), while 32 and 64 are IEEE float, written verbatim so values above full scale survive a gain stage intact.
 
 ```python
 from nanodsp import io
@@ -741,10 +742,7 @@ delay_sec, corr = analysis.gcc_phat(buf, ref)
 
 ### `nanodsp.stream` -- Real-time streaming infrastructure
 
-Stateless effects rebuild their DSP object every call, so feeding them
-successive blocks restarts the filter at each boundary. The `stateful_*`
-constructors keep one object per channel alive instead, so block-by-block
-processing matches whole-buffer processing exactly.
+Stateless effects rebuild their DSP object every call, so feeding them successive blocks restarts the filter at each boundary. The `stateful_*` constructors keep one object per channel alive instead, so block-by-block processing matches whole-buffer processing exactly.
 
 ```python
 import numpy as np
@@ -762,10 +760,7 @@ with BlockWriter("out.wav", 48000.0, channels=2) as writer:
         writer.write(filt.process(block))
 ```
 
-Channel-linked dynamics and the mono-to-stereo effects (the FDN `reverb`,
-`chorus`, the STK reverbs) have no per-channel form and so cannot stream;
-`nanodsp process --stream` rejects a chain containing them rather than silently
-producing different audio.
+Channel-linked dynamics and the mono-to-stereo effects (the FDN `reverb`, `chorus`, the STK reverbs) have no per-channel form and so cannot stream; `nanodsp process --stream` rejects a chain containing them rather than silently producing different audio.
 
 Block-based processing, ring buffers, and processor chains for streaming audio.
 
@@ -947,8 +942,11 @@ Cost estimates assume a typical stereo buffer at 44.1 kHz. Actual times vary wit
 ### Block size recommendations
 
 - **Offline processing**: Pass the full file as a single `AudioBuffer`. This minimizes per-block overhead and is the simplest approach.
+
 - **Streaming / real-time**: Use `BlockProcessor` or `process_blocks` with 256--1024 samples per block. This range balances throughput against latency.
+
 - **Throughput vs. latency**: Larger blocks amortize fixed overhead (function calls, GIL acquire/release) but increase latency proportionally. At 44.1 kHz, a 512-sample block is ~11.6 ms of latency.
+
 - **Stateful effects**: Effects with internal state (IIR filters, compressors, FDN reverb, delays) must be initialized once and reused across blocks. `BlockProcessor` and `ProcessorChain` handle this automatically.
 
 ### GIL release
@@ -988,10 +986,7 @@ uv run python demos/demo_synthesis.py                # no input file needed
 uv run python demos/demo_analysis.py demos/s01.wav   # prints to stdout
 ```
 
-`make demos` writes a few hundred files, which is more than anyone wants to open
-one at a time. `demos/play.sh` filters them by name and plays what matches,
-using `play` from [sox](https://sox.sourceforge.net/). Extra keywords narrow
-rather than widen, so a broad match is refined by adding words:
+`make demos` writes a few hundred files, which is more than anyone wants to open one at a time. `demos/play.sh` filters them by name and plays what matches, using `play` from [sox](https://sox.sourceforge.net/). Extra keywords narrow rather than widen, so a broad match is refined by adding words:
 
 ```bash
 ./demos/play.sh keyframe                # every keyframe render
@@ -1001,8 +996,7 @@ rather than widen, so a broad match is refined by adding words:
 ./demos/play.sh -n 5 -g 0.5 compare     # first five, at half volume
 ```
 
-Matches sort naturally, so a parameter sweep plays as k4, k16, k64, k256 rather
-than in lexicographic order. `-h` lists the options.
+Matches sort naturally, so a parameter sweep plays as k4, k16, k64, k256 rather than in lexicographic order. `-h` lists the options.
 
 | Script | Variants | What it demonstrates |
 |--------|----------|----------------------|
@@ -1054,23 +1048,11 @@ make coverage # tests with coverage report
 make asan     # rebuild with AddressSanitizer and run the suite under it
 ```
 
-`make asan` is worth running after any vendored-library upgrade. Memory errors
-in the C++ layer are invisible from Python and invisible to the test suite: an
-out-of-bounds write corrupts the allocator's metadata and the process traps
-later, inside an unrelated allocation, so the reported crash location is
-meaningless. Two such bugs in vendored STK were found this way. It leaves an
-instrumented build installed -- run `make build` afterwards to restore a normal
-one.
+`make asan` is worth running after any vendored-library upgrade. Memory errors in the C++ layer are invisible from Python and invisible to the test suite: an out-of-bounds write corrupts the allocator's metadata and the process traps later, inside an unrelated allocation, so the reported crash location is meaningless. Two such bugs in vendored STK were found this way. It leaves an instrumented build installed -- run `make build` afterwards to restore a normal one.
 
 ### Regression fixtures
 
-`tests/GOLDEN.json` pins the numeric output of 65 cases across every backend, so
-a vendored library that starts producing different numbers is caught even when
-it still satisfies every property the suite asserts. It is a committed fixture,
-not a build artefact. Comparison is numeric with a tolerance rather than by
-hash, since an exact hash of float output is not portable across compilers or
-CPUs. When a change to the output is intended, regenerate and review the diff as
-part of the same commit:
+`tests/GOLDEN.json` pins the numeric output of 65 cases across every backend, so a vendored library that starts producing different numbers is caught even when it still satisfies every property the suite asserts. It is a committed fixture, not a build artefact. Comparison is numeric with a tolerance rather than by hash, since an exact hash of float output is not portable across compilers or CPUs. When a change to the output is intended, regenerate and review the diff as part of the same commit:
 
 ```bash
 uv run python tests/test_golden.py --update
@@ -1078,15 +1060,6 @@ uv run python tests/test_golden.py --update
 
 ## License
 
-nanodsp's own code is MIT. A built wheel statically links the vendored C++
-backends, so it is a combined work: `MIT AND LGPL-2.1-only AND BSD-3-Clause AND
-ISC`. Every notice is reproduced in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md), which ships inside the
-wheel, and the corresponding source is vendored under `thirdparty/` and included
-in the sdist.
+nanodsp's own code is MIT. A built wheel statically links the vendored C++ backends, so it is a combined work: `MIT AND LGPL-2.1-only AND BSD-3-Clause AND ISC`. Every notice is reproduced in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md), which ships inside the wheel, and the corresponding source is vendored under `thirdparty/` and included in the sdist.
 
-The LGPL-2.1 component is DaisySP-LGPL, which supplies `Compressor`, `ReverbSc`,
-`MoogLadder`, `BlOsc`, `Bitcrush`, `Fold`, `Pluck`, `Tone` and `Comb` among
-others -- all reachable from the public API, so it is not an optional part.
-Embedding nanodsp in a proprietary product means taking on LGPL-2.1 section 6
-for that component.
+The LGPL-2.1 component is DaisySP-LGPL, which supplies `Compressor`, `ReverbSc`, `MoogLadder`, `BlOsc`, `Bitcrush`, `Fold`, `Pluck`, `Tone` and `Comb` among others -- all reachable from the public API, so it is not an optional part. Embedding nanodsp in a proprietary product means taking on LGPL-2.1 section 6 for that component.
