@@ -17,4 +17,5 @@ NB_MODULE(_core, m) {
     bind_iirdesign(m);
     bind_paulstretch(m);
     bind_signalsmith_stretch(m);
+    bind_keyframe(m);
 }

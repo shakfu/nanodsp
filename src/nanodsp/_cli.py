@@ -186,7 +186,16 @@ def _build_registry() -> None:
         _register(mod, "effects")
     _register(ops, "ops")
     _register(spectral, "spectral")
-    _register(timestretch, "spectral", include={"paulstretch", "signalsmith_stretch"})
+    _register(
+        timestretch,
+        "spectral",
+        include={
+            "paulstretch",
+            "signalsmith_stretch",
+            "keyframe_stretch",
+            "keyframe_sparsify",
+        },
+    )
     _register(analysis, "analysis")
     _register(synthesis, "synthesis")
 

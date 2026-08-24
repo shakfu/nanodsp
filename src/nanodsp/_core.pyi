@@ -2645,3 +2645,23 @@ class signalsmith_stretch:
         def process(
             self, input: NDArray[np.float32], stretch: float
         ) -> NDArray[np.float32]: ...
+
+class keyframe:
+    @staticmethod
+    def analyze(
+        input: NDArray[np.float32], threshold: float = 0.001
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32]]: ...
+    @staticmethod
+    def sparsify(
+        input: NDArray[np.float32], threshold: float = 0.001
+    ) -> NDArray[np.float32]: ...
+    @staticmethod
+    def stretch(
+        input: NDArray[np.float32],
+        time_rate: float,
+        pitch_rate: float = 1.0,
+        k: int = 16,
+        threshold: float = 0.001,
+        max_splice: float = 0.0,
+        n_out: int = 0,
+    ) -> NDArray[np.float32]: ...

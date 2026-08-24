@@ -62,6 +62,26 @@ def test_stub_declares_the_submodules():
     assert len(SUBMODULES) >= 15, SUBMODULES
 
 
+def test_every_runtime_submodule_is_declared():
+    """The stub must not miss a submodule entirely.
+
+    The per-submodule checks below enumerate from the stub, so a binding added
+    to the extension without a stub block is invisible to them -- which is
+    exactly what happened when `keyframe` was added. This closes that
+    direction.
+    """
+    runtime = {
+        name
+        for name in dir(core)
+        if not name.startswith("_") and type(getattr(core, name)).__name__ == "module"
+    }
+    missing = runtime - set(SUBMODULES)
+    assert not missing, (
+        f"the extension exposes submodules {sorted(missing)} that _core.pyi "
+        f"does not declare -- add a `class {sorted(missing)[0]}:` block to the stub"
+    )
+
+
 @pytest.mark.parametrize("name", SUBMODULES)
 def test_submodule_exists_at_runtime(name: str):
     assert hasattr(core, name), (

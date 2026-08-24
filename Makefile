@@ -153,6 +153,7 @@ demos:
 	@uv run python demos/demo_iir_filters.py $(DEMO_INPUT)
 	@uv run python demos/demo_paulstretch.py $(DEMO_INPUT)
 	@uv run python demos/demo_signalsmith_stretch.py $(DEMO_INPUT)
+	@uv run python demos/demo_keyframe.py $(DEMO_INPUT)
 
 # Clean build artifacts
 clean:

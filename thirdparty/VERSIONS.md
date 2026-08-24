@@ -86,6 +86,27 @@ reason given above, cannot be relied on for the uninitialised-read family.
 
 ## Not vendored
 
+- **Keyframe stretching** (`src/nanodsp/_core_keyframe.cpp`): an *original*
+  implementation of the algorithm in M. Nielsen, "Keyframe Time Stretching via
+  Extrema Sampling", DAFx26. The paper is distributed under CC BY 4.0 and was
+  the only source used; every equation and algorithm number in the file refers
+  to it.
+
+  The author's own firmware, [capicola](https://github.com/heavylight-industries/capicola),
+  is **AGPL-3.0**. None of it was consulted or reproduced, and none of it may
+  be: linking any part of it into `_core` would make the extension a derivative
+  work and replace this project's MIT licensing with AGPL-3.0, which is
+  stronger than GPL -- its section 13 obliges you to offer source to users who
+  reach the software over a network. The same rule as for paulxstretch below
+  applies: if those sources are ever checked out for reference, keep them
+  **outside** this repository.
+
+  Two places where the paper's Algorithm 1 is under-specified, and what this
+  implementation does instead, are commented in place at the sign-change test.
+  Both concern the derivative sign at exactly zero, which is routine rather
+  than exotic: any tone whose period divides the sample rate puts its extrema
+  on the sample grid, where the central-difference derivative cancels exactly.
+
 - **PaulStretch** (`src/nanodsp/_core_paulstretch.cpp`): the extreme time-stretch backend is an *original* implementation of the PaulStretch algorithm by Nasca Octavian Paul, which the author placed in the public domain. It is built on the vendored signalsmith RealFFT and does **not** include any source from the GPLv3 [paulxstretch](https://github.com/essej/paulxstretch) application -- that code is incompatible with this project's MIT license. Only the public-domain algorithm is reproduced.
 
   The same applies to the spectral modules added on top of it. The constant-Q spread and tonal/noise separation reproduce techniques *described* by the PaulXStretch sources, but the implementations here are written from scratch against the vendored signalsmith RealFFT, and both deviate deliberately where the original parameterization is poorly conditioned:

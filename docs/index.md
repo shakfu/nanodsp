@@ -4,7 +4,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 
 ## Features
 
-- **169 registered DSP functions** -- 114 chainable audio effects plus generators, analyzers, and spectral-domain operators, spanning filters, dynamics, reverb, synthesis, analysis, time-stretching and granular synthesis (`nanodsp list` enumerates them)
+- **171 registered DSP functions** -- 116 chainable audio effects plus generators, analyzers, and spectral-domain operators, spanning filters, dynamics, reverb, synthesis, analysis, time-stretching and granular synthesis (`nanodsp list` enumerates them)
 
 - **12 C++ backends** -- signalsmith, signalsmith-stretch, DaisySP, STK, madronalib, HISSTools, CHOC, GrainflowLib, fxdsp, DspFilters, vafilters, PolyBLEP
 

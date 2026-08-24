@@ -234,6 +234,17 @@ CASES: dict[str, Callable[[], Any]] = {
     "timestretch.signalsmith": lambda: timestretch.signalsmith_stretch(
         MONO, stretch=1.5, semitones=2.0
     ),
+    # Keyframe stretching is an original implementation of a published
+    # algorithm rather than a vendored library, so there is no upstream to
+    # diff against; these pin its numeric output. tests/test_keyframe.py
+    # separately checks it against the figures the paper reports.
+    "timestretch.keyframe_sparsify": lambda: timestretch.keyframe_sparsify(MONO),
+    "timestretch.keyframe_stretch": lambda: timestretch.keyframe_stretch(
+        MONO, stretch=2.0
+    ),
+    "timestretch.keyframe_pitch": lambda: timestretch.keyframe_stretch(
+        MONO, semitones=5.0
+    ),
     # --- analysis (scalars and curves) ---
     "analysis.loudness_lufs": lambda: analysis.loudness_lufs(STEREO),
     "analysis.true_peak_dbtp": lambda: analysis.true_peak_dbtp(STEREO),

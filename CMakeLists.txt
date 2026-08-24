@@ -198,6 +198,7 @@ nanobind_add_module(_core
     src/nanodsp/_core_iirdesign.cpp
     src/nanodsp/_core_paulstretch.cpp
     src/nanodsp/_core_signalsmith_stretch.cpp
+    src/nanodsp/_core_keyframe.cpp
 )
 target_link_libraries(_core PRIVATE signalsmith-dsp signalsmith-stretch DaisySP DaisySP_LGPL stk_subset madronalib-dsp hisstools grainflow-dsp vafilters-dsp fxdsp dspfilters)
 target_include_directories(_core SYSTEM PRIVATE thirdparty/choc)

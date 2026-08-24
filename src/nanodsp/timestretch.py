@@ -34,8 +34,10 @@ from __future__ import annotations
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
+from nanodsp._helpers import _process_per_channel
 from nanodsp._core import paulstretch as _ps
 from nanodsp._core import signalsmith_stretch as _ss
+from nanodsp._core import keyframe as _kf
 
 
 def paulstretch(
@@ -230,4 +232,165 @@ def signalsmith_stretch(
         sample_rate=buf.sample_rate,
         channel_layout=buf.channel_layout,
         label=buf.label,
+    )
+
+
+def keyframe_sparsify(buf: AudioBuffer, threshold: float = 0.001) -> AudioBuffer:
+    """Reduce audio to its local extrema and reconstruct it.
+
+    This is the representation underlying :func:`keyframe_stretch`, exposed on
+    its own. The signal is replaced by a sparse set of its local extrema and
+    rebuilt by interpolating between them, so the round trip is lossy: the
+    result is the input as the stretcher sees it, with no time or pitch change
+    applied. Useful for auditing how much the representation costs on given
+    material before stretching it, and usable as a mild lo-fi effect in its own
+    right.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    threshold : float
+        Amplitude difference below which an extremum is discarded, in the same
+        units as the samples. The default of 0.001 (-60 dB) reconstructs
+        faithfully; raising it discards low-amplitude detail and, because high
+        frequencies tend to have lower amplitudes in practice, acts as an
+        amplitude-dependent lowpass.
+
+    Returns
+    -------
+    AudioBuffer
+        Same length, channel count and sample rate as the input.
+
+    Raises
+    ------
+    ValueError
+        If *threshold* is negative.
+
+    Examples
+    --------
+    >>> from nanodsp import AudioBuffer, timestretch
+    >>> buf = AudioBuffer.sine(440.0, frames=4800, sample_rate=48000.0)
+    >>> timestretch.keyframe_sparsify(buf).frames
+    4800
+    """
+    if threshold < 0:
+        raise ValueError(f"threshold must be non-negative, got {threshold}")
+
+    def _process(x):
+        return _kf.sparsify(x, float(threshold))
+
+    return _process_per_channel(buf, _process)
+
+
+def keyframe_stretch(
+    buf: AudioBuffer,
+    stretch: float = 1.0,
+    semitones: float = 0.0,
+    threshold: float = 0.001,
+    splice_keyframes: int = 16,
+    max_splice_ms: float = 200.0,
+) -> AudioBuffer:
+    """Time-stretch and pitch-shift by splicing in the extrema domain.
+
+    An overlap-add stretcher whose splice duration adapts to the signal instead
+    of being fixed. The audio is first reduced to its local extrema; because
+    extrema crowd together where the signal is busy and spread out where it is
+    sustained, their spacing is a per-sample estimate of local information
+    density, available without an FFT or a correlation search. Each crossfade
+    is sized in extrema rather than samples, so it shortens automatically at a
+    transient and lengthens across a sustained note.
+
+    This is a different trade from the other two stretchers here.
+    :func:`signalsmith_stretch` is the one to reach for when the result should
+    sound like the input; :func:`paulstretch` is for extreme, deliberately
+    smeared textures. This one is cheap and transient-preserving, and colours
+    the sound -- the underlying paper reports it as a creative effect rather
+    than a transparent one, with measurable spectral contrast loss on tonally
+    nuanced material. It is also the only stretcher here that produces output
+    sample by sample with no block latency.
+
+    Parameters
+    ----------
+    buf : AudioBuffer
+        Input audio.
+    stretch : float
+        Output length as a multiple of the input, > 0. 2.0 is twice as long.
+    semitones : float
+        Pitch shift in semitones, independent of *stretch*.
+    threshold : float
+        Extrema-discard threshold; see :func:`keyframe_sparsify`.
+    splice_keyframes : int
+        How far the playhead may drift from where it should be, measured in
+        keyframes, before a splice is triggered. Larger values splice less
+        often and over longer spans. Must be >= 1.
+    max_splice_ms : float
+        Ceiling on splice duration in milliseconds. Long silences or otherwise
+        sparse passages would otherwise produce a splice lasting seconds, which
+        smears everything leading up to the next transient. Pass 0 to disable.
+
+    Returns
+    -------
+    AudioBuffer
+        Stretched audio of ``round(frames * stretch)`` samples; all channels
+        share the same length. Sample rate and channel layout are preserved.
+
+    Raises
+    ------
+    ValueError
+        If *stretch* is not positive, *splice_keyframes* is below 1, or
+        *threshold* or *max_splice_ms* is negative.
+
+    References
+    ----------
+    .. [1] M. Nielsen, "Keyframe Time Stretching via Extrema Sampling," Proc.
+       29th Int. Conf. Digital Audio Effects (DAFx26), Cambridge, MA, USA,
+       Sept. 2026. https://github.com/heavylight-industries/dafx26-paper
+
+    Examples
+    --------
+    >>> from nanodsp import AudioBuffer, timestretch
+    >>> buf = AudioBuffer.sine(440.0, frames=48000, sample_rate=48000.0)
+    >>> timestretch.keyframe_stretch(buf, stretch=2.0).frames
+    96000
+
+    Pitch shifting is independent of stretching:
+
+    >>> timestretch.keyframe_stretch(buf, semitones=7.0).frames
+    48000
+    """
+    if stretch <= 0:
+        raise ValueError(f"stretch must be positive, got {stretch}")
+    if splice_keyframes < 1:
+        raise ValueError(f"splice_keyframes must be >= 1, got {splice_keyframes}")
+    if threshold < 0:
+        raise ValueError(f"threshold must be non-negative, got {threshold}")
+    if max_splice_ms < 0:
+        raise ValueError(f"max_splice_ms must be non-negative, got {max_splice_ms}")
+
+    n_out = int(round(buf.frames * float(stretch)))
+    time_rate = 1.0 / float(stretch)
+    pitch_rate = 2.0 ** (float(semitones) / 12.0)
+    max_splice = float(max_splice_ms) * buf.sample_rate / 1000.0
+
+    channels = [
+        _kf.stretch(
+            buf.ensure_1d(ch),
+            time_rate,
+            pitch_rate,
+            int(splice_keyframes),
+            float(threshold),
+            max_splice,
+            n_out,
+        )
+        for ch in range(buf.channels)
+    ]
+
+    out = np.stack(channels) if len(channels) > 1 else channels[0].reshape(1, -1)
+    return AudioBuffer(
+        out,
+        sample_rate=buf.sample_rate,
+        channel_layout=buf.channel_layout,
+        label=buf.label,
+        copy=False,
     )

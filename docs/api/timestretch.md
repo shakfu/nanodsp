@@ -1,9 +1,42 @@
 # Time-stretching and pitch-shifting
 
-Two complementary backends:
+Three complementary backends:
 
 - **PaulStretch** -- extreme time-stretching via phase-randomized spectral resynthesis. The algorithm is by Nasca Octavian Paul (public domain); an original implementation built on the signalsmith FFT, not the GPLv3 [paulxstretch](https://github.com/essej/paulxstretch) sources.
 - **Signalsmith stretch** -- the MIT-licensed [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) library: a transient-aware, phase-vocoder-derived stretcher that stays musical at modest ratios and decouples time-stretch from pitch-shift.
+- **Keyframe stretch** -- a content-adaptive overlap-add stretcher that sizes each splice from the spacing of the signal's own local extrema, so no FFT or correlation search is involved. An original implementation of the algorithm in Nielsen, "Keyframe Time Stretching via Extrema Sampling" (DAFx26), whose [paper](https://github.com/heavylight-industries/dafx26-paper) is CC BY 4.0; the author's AGPL-3.0 firmware was not used.
+
+## Keyframe stretch usage
+
+```python
+from nanodsp import AudioBuffer
+from nanodsp.timestretch import keyframe_stretch, keyframe_sparsify
+
+buf = AudioBuffer.from_file("drums.wav")
+
+# Twice as long, pitch preserved
+out = keyframe_stretch(buf, stretch=2.0)
+
+# Time and pitch are independent
+out = keyframe_stretch(buf, stretch=1.5, semitones=-3.0)
+
+# Splice less often, over longer spans
+out = keyframe_stretch(buf, stretch=2.0, splice_keyframes=64)
+
+# The underlying representation on its own: extrema in, interpolation out.
+# No time or pitch change -- this is what the stretcher's input costs.
+audit = keyframe_sparsify(buf)
+
+# Raising the threshold discards low-amplitude detail, which in practice
+# behaves like an amplitude-dependent lowpass
+lofi = keyframe_sparsify(buf, threshold=0.02)
+```
+
+The signal is first reduced to its local extrema. Their spacing tracks local
+bandwidth, so it doubles as a per-sample estimate of information density, and
+each crossfade is sized in extrema rather than samples: short where they crowd
+together at a transient, long across a sustained note. That adaptation is the
+whole method -- there is no separate transient detector.
 
 ## PaulStretch usage
 

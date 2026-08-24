@@ -120,3 +120,4 @@ void bind_fxdsp(nb::module_ &m);
 void bind_iirdesign(nb::module_ &m);
 void bind_paulstretch(nb::module_ &m);
 void bind_signalsmith_stretch(nb::module_ &m);
+void bind_keyframe(nb::module_ &m);

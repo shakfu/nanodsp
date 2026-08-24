@@ -67,6 +67,10 @@ nanodsp process input.wav -o out.wav -f lowpass:cutoff_hz=12000 -p master
 nanodsp process input.wav -o out.wav -f paulstretch:stretch=8
 nanodsp process input.wav -o out.wav -f paulstretch:stretch=20,pitch_semitones=12,onset=0.5
 
+# Keyframe stretch -- cheap, transient-preserving, no FFT (DAFx26 algorithm)
+nanodsp process drums.wav -o out.wav -f keyframe_stretch:stretch=2
+nanodsp process drums.wav -o out.wav -f keyframe_stretch:stretch=1.5,semitones=-3
+
 # Signalsmith high-quality stretch / pitch-shift (musical at modest ratios)
 nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=2
 nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=1,semitones=-5,tonality_hz=8000
@@ -629,6 +633,21 @@ out = signalsmith_stretch(buf, stretch=1.5, semitones=12.0, tonality_hz=8000.0)
 
 Output length is approximately `frames * stretch`; time-stretch and pitch-shift are independent, all channels are processed coherently in one pass, and output is reproducible for a given `seed`. Also available as the CLI filter `signalsmith_stretch:stretch=...`.
 
+Keyframe stretch -- content-adaptive overlap-add, no FFT:
+
+```python
+from nanodsp.timestretch import keyframe_stretch, keyframe_sparsify
+
+out = keyframe_stretch(buf, stretch=2.0)                      # twice as long
+out = keyframe_stretch(buf, stretch=1.5, semitones=-3.0)      # both at once
+out = keyframe_stretch(buf, stretch=2.0, splice_keyframes=64) # longer splices
+
+out = keyframe_sparsify(buf)                                  # the representation alone
+out = keyframe_sparsify(buf, threshold=0.02)                  # coarser: lo-fi
+```
+
+The signal is reduced to its local extrema; their spacing tracks local bandwidth, so it doubles as a free estimate of information density and sizes each crossfade -- short at transients, long across sustained notes, with no separate transient detector. Output length is exactly `round(frames * stretch)`. It is the cheapest stretcher here and the only one with no block latency, at the cost of some spectral haze on tonally nuanced material. An original implementation of the algorithm in Nielsen, ["Keyframe Time Stretching via Extrema Sampling"](https://github.com/heavylight-industries/dafx26-paper) (DAFx26, CC BY 4.0). Also available as the CLI filters `keyframe_stretch:stretch=...` and `keyframe_sparsify:threshold=...`.
+
 ### `nanodsp.synthesis` -- Oscillators, noise, drums, physical modeling
 
 Sound generators using DaisySP and STK backends.
@@ -952,7 +971,7 @@ This reports iterations per second, mean time per call, and buffer throughput in
 
 ## Demos
 
-20 demo scripts in `demos/` showcase the full API surface. Run them all at once:
+21 demo scripts in `demos/` showcase the full API surface. Run them all at once:
 
 ```bash
 make demos                              # uses demos/s01.wav
@@ -968,6 +987,22 @@ uv run python demos/demo_distortion.py demos/s01.wav --no-normalize
 uv run python demos/demo_synthesis.py                # no input file needed
 uv run python demos/demo_analysis.py demos/s01.wav   # prints to stdout
 ```
+
+`make demos` writes a few hundred files, which is more than anyone wants to open
+one at a time. `demos/play.sh` filters them by name and plays what matches,
+using `play` from [sox](https://sox.sourceforge.net/). Extra keywords narrow
+rather than widen, so a broad match is refined by adding words:
+
+```bash
+./demos/play.sh keyframe                # every keyframe render
+./demos/play.sh keyframe splice         # just the splice-threshold sweep
+./demos/play.sh -l reverb               # list matches, do not play
+./demos/play.sh -r 'stretch-(2|4)x'     # regex instead of substring
+./demos/play.sh -n 5 -g 0.5 compare     # first five, at half volume
+```
+
+Matches sort naturally, so a parameter sweep plays as k4, k16, k64, k256 rather
+than in lexicographic order. `-h` lists the options.
 
 | Script | Variants | What it demonstrates |
 |--------|----------|----------------------|
@@ -991,6 +1026,7 @@ uv run python demos/demo_analysis.py demos/s01.wav   # prints to stdout
 | `demo_iir_filters.py` | 23 | Butterworth, Chebyshev I/II, Elliptic, Bessel filters at various orders |
 | `demo_paulstretch.py` | 15 | PaulStretch extreme time-stretch: stretch factors, window size, transient preservation, octave shift, harmonics/spread, constant-Q spread, tonal/noise separation, spectral band-pass, long drone |
 | `demo_signalsmith_stretch.py` | 15 | Signalsmith time-stretch / pitch-shift: stretch factors, pure pitch-shifts (octave, fifth, detune), tonality limit, combined stretch+pitch (monster/chipmunk), cheaper preset, and an extreme-factor signalsmith-vs-PaulStretch comparison |
+| `demo_keyframe.py` | 22 | Keyframe stretch via extrema sampling: stretch factors, pitch-shifts, the splice-threshold macro (K = 4/16/64/256), the splice duration cap, a sparsification threshold sweep with retained-sample counts, and a timed three-way comparison against the other two stretchers |
 
 File-processing scripts share the same interface:
 
@@ -1011,8 +1047,8 @@ options:
 
 ```bash
 make build    # rebuild extension after C++ changes
-make test     # run 2442 tests
-make demos    # run all 20 demo scripts
+make test     # run the test suite
+make demos    # run all 21 demo scripts
 make qa       # test + lint + typecheck + format
 make coverage # tests with coverage report
 make asan     # rebuild with AddressSanitizer and run the suite under it

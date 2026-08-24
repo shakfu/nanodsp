@@ -164,9 +164,17 @@ nanodsp process input.wav -o out.wav -f signalsmith_stretch:stretch=1,semitones=
 
 ## When to use which stretcher
 
-| | `spectral.time_stretch` (phase vocoder) | `timestretch.signalsmith_stretch` | `timestretch.paulstretch` |
-|---|---|---|---|
-| Best for | Modest ratios, keeping the signal recognizable | Clean stretch + independent pitch-shift | Extreme ratios, ambient/textural results |
-| Character | Faithful slow-down/speed-up | Musical, transient-aware | Smeared, diffuse, pad-like |
-| Pitch control | Separate pitch-shift | Built-in, decoupled from stretch | Spectral shift (formants move) |
-| Typical range | ~0.5x--2x | ~0.5x--4x | ~4x--50x+ |
+| | `spectral.time_stretch` (phase vocoder) | `timestretch.signalsmith_stretch` | `timestretch.paulstretch` | `timestretch.keyframe_stretch` |
+|---|---|---|---|---|
+| Best for | Modest ratios, keeping the signal recognizable | Clean stretch + independent pitch-shift | Extreme ratios, ambient/textural results | Percussive and dense material, cheaply |
+| Character | Faithful slow-down/speed-up | Musical, transient-aware | Smeared, diffuse, pad-like | Organic, transient-preserving, some spectral haze |
+| Pitch control | Separate pitch-shift | Built-in, decoupled from stretch | Spectral shift (formants move) | Built-in, decoupled from stretch |
+| Typical range | ~0.5x--2x | ~0.5x--4x | ~4x--50x+ | ~0.5x--4x |
+| Cost | FFT per frame | FFT per frame | FFT per frame | No FFT; ~15 multiplies per sample |
+
+Reach for `signalsmith_stretch` when the result should sound like the input.
+Reach for `keyframe_stretch` when the material is percussive or busy, when you
+want its particular character, or when you need sample-by-sample output with no
+block latency -- it is the only stretcher here that has no frame to fill before
+it can emit anything. Its concession is spectral: tonally nuanced material
+(solo voice, glockenspiel) picks up an audible haze.
