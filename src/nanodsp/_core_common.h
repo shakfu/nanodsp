@@ -64,9 +64,23 @@ inline NpF1 util_process_mono(T &self, ArrayF input) {
     return make_f1(out, n);
 }
 
+// Validate a caller-supplied sample count before it reaches new[].
+//
+// A negative n would otherwise reach `new float[(size_t)n]` as an enormous
+// size_t and surface in Python as MemoryError: std::bad_array_new_length,
+// which tells the caller nothing. Throwing here gives a ValueError naming the
+// argument. n == 0 stays legal and yields an empty array.
+inline void util_check_count(int n, const char *what = "n") {
+    if (n < 0) {
+        throw std::invalid_argument(
+            std::string(what) + " must be non-negative, got " + std::to_string(n));
+    }
+}
+
 // Generate n samples from a nullary generator: out[i] = self.Process().
 template <typename T>
 inline NpF1 util_generate_mono(T &self, int n) {
+    util_check_count(n);
     auto *out = new float[(size_t)n];
     { nb::gil_scoped_release rel;
       for (int i = 0; i < n; ++i) out[i] = self.Process();
@@ -78,10 +92,16 @@ inline NpF1 util_generate_mono(T &self, int n) {
 // out[i>0] = Process(false). Used by drums and excited voices.
 template <typename T>
 inline NpF1 util_trigger_generate_mono(T &self, int n) {
+    util_check_count(n);
     auto *out = new float[(size_t)n];
     { nb::gil_scoped_release rel;
-      out[0] = self.Process(true);
-      for (int i = 1; i < n; ++i) out[i] = self.Process(false);
+      // Guarded: with n == 0 the unconditional first write went one element
+      // past a zero-size allocation (a silent heap-buffer-overflow, confirmed
+      // under AddressSanitizer).
+      if (n > 0) {
+        out[0] = self.Process(true);
+        for (int i = 1; i < n; ++i) out[i] = self.Process(false);
+      }
     }
     return make_f1(out, (size_t)n);
 }

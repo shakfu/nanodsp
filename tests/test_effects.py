@@ -224,6 +224,29 @@ class TestDaisySPEffects:
         result = daisysp.pitch_shift(buf, semitones=5.0)
         assert result.frames == 2048
 
+    def test_pitch_shift_unison_passes_signal_through(self):
+        """semitones=0 -- the default -- must return audio, not NaN.
+
+        DaisySP's PitchShifter::Init left transpose_, the crossfade history and
+        the random-modulation state unassigned. At transposition 0 the
+        modulation phasor is frozen, so the branches that would have written
+        that state never ran, and the first read of it turned every output
+        sample into NaN. Patched in thirdparty/; see thirdparty/VERSIONS.md.
+
+        This assertion is a statement of intent rather than a reliable guard:
+        the fault read indeterminate memory, so whether it reproduces depends
+        on allocator history and binary layout. tests/GOLDEN.json pins the
+        numeric output, which does not.
+        """
+        buf = self._sine()
+        result = daisysp.pitch_shift(buf)
+        assert np.isfinite(result.data).all()
+        # At unison the shifter is a fixed delay at unity gain, so the output
+        # carries essentially the input's energy.
+        rms_in = float(np.sqrt(np.mean(buf.data**2)))
+        rms_out = float(np.sqrt(np.mean(result.data**2)))
+        assert rms_out == pytest.approx(rms_in, rel=0.15)
+
     def test_sample_rate_reduce_shape(self):
         buf = self._noise()
         result = daisysp.sample_rate_reduce(buf, freq=0.3)
@@ -248,6 +271,40 @@ class TestDaisySPEffects:
         buf = self._noise()
         result = daisysp.bitcrush(buf)
         assert result.data.dtype == np.float32
+
+    @pytest.mark.parametrize("bit_depth", [4, 8, 12, 16])
+    def test_bitcrush_is_unity_gain(self, bit_depth):
+        """Quantizing must not rescale or invert the signal.
+
+        DaisySP's decode step read `out *= (65536.0f / bits) - 32768;`, which
+        parses as a single multiply by ((65536/bits) - 32768) instead of a
+        multiply followed by an offset subtraction. The result was a gain of
+        about 2^(bit_depth-1) with an inverted sign -- at the default 8 bits, a
+        0.5-peak input came back at 126.5. Patched in thirdparty/; see
+        thirdparty/VERSIONS.md.
+        """
+        buf = self._sine()
+        result = daisysp.bitcrush(buf, bit_depth=bit_depth)
+        peak_in = float(np.max(np.abs(buf.data)))
+        peak_out = float(np.max(np.abs(result.data)))
+        assert peak_out == pytest.approx(peak_in, abs=2.0 ** -(bit_depth - 2))
+        # Quantization error is small at these depths, so a correct decode
+        # correlates positively with the input; the inverted form did not.
+        corr = float(np.mean(buf.data * result.data))
+        assert corr > 0.0
+
+    def test_bitcrush_instances_are_independent(self):
+        """Two Bitcrush objects must not share state.
+
+        The Fold used by Process() was a file-scope `static Fold fold;`, shared
+        by every instance in the process. Patched to a member.
+        """
+        buf = self._sine()
+        a = daisysp.bitcrush(buf, bit_depth=8)
+        interleaved = daisysp.bitcrush(buf, bit_depth=4)
+        b = daisysp.bitcrush(buf, bit_depth=8)
+        assert interleaved.frames == buf.frames
+        np.testing.assert_array_equal(a.data, b.data)
 
     def test_fold_shape(self):
         buf = self._sine()

@@ -192,6 +192,14 @@ CASES: dict[str, Callable[[], Any]] = {
     "daisysp.phaser": lambda: daisysp.phaser(MONO),
     "daisysp.tremolo": lambda: daisysp.tremolo(MONO),
     "daisysp.bitcrush": lambda: daisysp.bitcrush(MONO, bit_depth=8),
+    # pitch_shift left most of its state unassigned in Init, which at
+    # transposition 0 -- its default -- made every output sample NaN. Now
+    # patched (see thirdparty/VERSIONS.md). Pinned at two transpositions
+    # including 0, because the symptom depended on what happened to be in the
+    # reused memory: it is not reliably reproducible from Python, so a numeric
+    # fingerprint is the only guard that does not depend on allocator history.
+    "daisysp.pitch_shift.unison": lambda: daisysp.pitch_shift(MONO),
+    "daisysp.pitch_shift.up7": lambda: daisysp.pitch_shift(MONO, semitones=7.0),
     "dynamics.compress.linked": lambda: dynamics.compress(STEREO, link=True),
     "dynamics.compress.unlinked": lambda: dynamics.compress(STEREO, link=False),
     "dynamics.compress.mono": lambda: dynamics.compress(MONO),
@@ -292,17 +300,37 @@ def _platform_key() -> str:
       `spectral.pitch_shift` peak moved 0.18% between macOS and Linux, while
       every case matched between two different macOS machines.
 
-    So the fixtures are stamped, and a mismatched platform skips rather than
-    fails. Regenerate locally to get coverage on yours.
+    So fingerprints are stored per platform and a platform with no block skips
+    rather than fails. Regenerate locally to add yours; `--update` merges, so it
+    keeps the blocks other machines contributed. Commit every platform you can
+    reach -- a block that nobody regenerates is a suite that quietly stops
+    running there, which is what happened while the fixture held only one.
     """
     return f"{sys.platform}-{platform.machine()}"
 
 
-def _compute_all() -> dict:
-    return {
-        "platform": _platform_key(),
-        "cases": {name: _fingerprint(fn()) for name, fn in sorted(CASES.items())},
-    }
+def _compute_current_platform() -> dict:
+    return {name: _fingerprint(fn()) for name, fn in sorted(CASES.items())}
+
+
+def _merged_update() -> dict:
+    """Fingerprints for this platform, merged into whatever is already stored.
+
+    Regenerating must not discard the other platforms' blocks. The fixture used
+    to hold one platform, so `--update` on a second machine silently replaced
+    the first machine's numbers -- and because a mismatched platform skips
+    rather than fails, nobody found out until the suite quietly stopped running
+    on the machine that had been dropped.
+    """
+    stored: dict = {}
+    if GOLDEN_PATH.is_file():
+        stored = json.loads(GOLDEN_PATH.read_text())
+    platforms = dict(stored.get("platforms", {}))
+    # Carry a pre-existing single-platform fixture over to the new schema.
+    if "cases" in stored and "platform" in stored:
+        platforms.setdefault(stored["platform"], stored["cases"])
+    platforms[_platform_key()] = _compute_current_platform()
+    return {"platforms": platforms}
 
 
 def _load_golden() -> dict[str, dict]:
@@ -314,13 +342,22 @@ def _load_golden() -> dict[str, dict]:
             "checkout that never had one."
         )
     stored = json.loads(GOLDEN_PATH.read_text())
-    if stored.get("platform") != _platform_key():
-        pytest.skip(
-            f"fixtures were generated on {stored.get('platform')!r}, running on "
-            f"{_platform_key()!r}; regenerate with "
-            "`python tests/test_golden.py --update` to pin this platform"
+    if "platforms" not in stored:
+        pytest.fail(
+            f"{GOLDEN_PATH.name} uses the old single-platform schema. "
+            "Regenerate with `python tests/test_golden.py --update`, which "
+            "migrates it and keeps the existing block."
         )
-    return stored["cases"]
+    platforms = stored["platforms"]
+    key = _platform_key()
+    if key not in platforms:
+        pytest.skip(
+            f"no fixtures for {key!r}; stored platforms are "
+            f"{sorted(platforms)}. Regenerate with "
+            "`python tests/test_golden.py --update` to add this one -- it "
+            "merges, so the others are kept."
+        )
+    return platforms[key]
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -401,12 +438,15 @@ def test_fingerprint_detects_a_length_change() -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     if "--update" in sys.argv:
-        data = _compute_all()
+        data = _merged_update()
         GOLDEN_PATH.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        key = _platform_key()
+        others = sorted(k for k in data["platforms"] if k != key)
         print(
-            f"Wrote {len(data['cases'])} fingerprints for {data['platform']} "
+            f"Wrote {len(data['platforms'][key])} fingerprints for {key} "
             f"to {GOLDEN_PATH}"
         )
+        print(f"Kept: {', '.join(others) if others else '(no other platforms)'}")
     else:
         print(__doc__)
         print("Run with --update to regenerate the corpus.")

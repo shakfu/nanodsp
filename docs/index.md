@@ -51,7 +51,7 @@ uv run pytest
 |---------|---------|------------------|
 | [signalsmith-dsp](https://signalsmith-audio.co.uk/code/dsp/) | MIT | Filters, FFT, delay, envelopes, spectral processing, rates, mix |
 | [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | MIT | High-quality time-stretching and pitch-shifting |
-| [DaisySP](https://github.com/electro-smith/DaisySP) | MIT | Oscillators, effects, dynamics, drums, physical modeling, noise |
+| [DaisySP](https://github.com/electro-smith/DaisySP) | MIT + LGPL-2.1 | Oscillators, effects, dynamics, drums, physical modeling, noise |
 | [STK](https://github.com/thestk/stk) | MIT | Physical modeling instruments, generators, filters, delays, effects |
 | [madronalib](https://github.com/madronalabs/madronalib) | MIT | FDN reverbs, resampling, generators, projections, windows |
 | [HISSTools Library](https://github.com/AlexHarker/HISSTools_Library) | BSD-3 | Convolution, spectral processing, statistical analysis, windows |

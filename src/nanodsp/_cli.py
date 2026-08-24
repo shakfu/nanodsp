@@ -609,6 +609,11 @@ def _resolve_preset_fn(fn_str: str) -> Any:
     fn = getattr(mod, func_name, None)
     if fn is None:
         raise KeyError(f"Unknown function: {fn_str}")
+    if not callable(fn):
+        # Any public attribute resolves here, including imported modules --
+        # "ops.np" is a valid attribute lookup and a useless preset step. Fail
+        # at resolution with the name, rather than later inside inspect.
+        raise KeyError(f"Not a callable function: {fn_str}")
     return fn
 
 

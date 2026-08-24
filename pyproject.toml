@@ -3,7 +3,8 @@ name = "nanodsp"
 version = "0.2.0"
 description = "High-performance Python DSP toolkit built on C++ libraries via nanobind"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT AND LGPL-2.1-only AND BSD-3-Clause AND ISC"
+license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
 requires-python = ">=3.10"
 dependencies = ["numpy"]
 authors = [
@@ -15,7 +16,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",

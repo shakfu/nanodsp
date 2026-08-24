@@ -81,6 +81,23 @@ class PitchShifter
             phs_[i].Init(sr, 50, i == 0 ? 0 : PI_F);
         }
         shift_up_ = true;
+        // nanodsp local patch: Init assigned only part of the object. SetDelSize
+        // below calls SetTransposition(transpose_), so the first transposition
+        // was computed from an indeterminate transpose_; and at transposition 0
+        // the modulation phasor frequency solves to zero, which freezes both
+        // phasors, so the two `prev_phs_ > fade` branches in Process() -- the
+        // only writers of slewed_mod_ and mod_coeff_ -- never run. The first
+        // `slewed_mod_[i] += mod_coeff_[i] * (mod_a_amt_ - slewed_mod_[i])` then
+        // read indeterminate memory and NaN propagated through SetDelay() into
+        // every output sample. See thirdparty/VERSIONS.md.
+        transpose_     = 0.0f;
+        pitch_shift_   = 0.0f;
+        prev_phs_a_    = 0.0f;
+        prev_phs_b_    = 0.0f;
+        mod_a_amt_     = 0.0f;
+        mod_b_amt_     = 0.0f;
+        slewed_mod_[0] = slewed_mod_[1] = 0.0f;
+        mod_coeff_[0] = mod_coeff_[1] = 0.0f;
         del_size_ = SHIFT_BUFFER_SIZE;
         SetDelSize(del_size_);
         fun_ = 0.0f;

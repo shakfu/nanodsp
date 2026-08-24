@@ -12,6 +12,8 @@ https://opensource.org/license/lgpl-2-1/
 
 #include <stdint.h>
 #ifdef __cplusplus
+// nanodsp local patch: for the Fold member below.
+#include "fold.h"
 
 namespace daisysp
 {
@@ -44,6 +46,8 @@ class Bitcrush
   private:
     float sample_rate_, crush_rate_;
     int   bit_depth_;
+    // nanodsp local patch: was a file-scope `static Fold fold;` in bitcrush.cpp.
+    Fold  fold_;
 };
 } // namespace daisysp
 #endif

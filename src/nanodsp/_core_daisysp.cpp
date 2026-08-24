@@ -1129,12 +1129,16 @@ static void bind_daisysp_physical_modeling(nb::module_ &m) {
         .def("process", [](PL &self, int n) {
             // Pluck::Process takes a non-const float& trig, so it cannot use the
             // shared util_trigger_generate_mono helper (which passes bool literals).
-            auto *out = new float[n];
+            util_check_count(n);
+            auto *out = new float[(size_t)n];
             float trig = 1.0f;
             { nb::gil_scoped_release rel;
-              out[0] = self.Process(trig);
-              trig = 0.0f;
-              for (int i = 1; i < n; ++i) out[i] = self.Process(trig);
+              // Guarded for the same reason as util_trigger_generate_mono.
+              if (n > 0) {
+                out[0] = self.Process(trig);
+                trig = 0.0f;
+                for (int i = 1; i < n; ++i) out[i] = self.Process(trig);
+              }
             }
             return make_f1(out, (size_t)n);
         }, "n"_a, "Trigger and generate n samples.");

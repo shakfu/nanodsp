@@ -32,7 +32,7 @@ jobs:
         run: uv run ruff format src/ tests/
 
       - name: Type check with mypy
-        run: uv run mypy src/nanodsp/__init__.py tests/ --exclude '.venv'
+        run: uv run mypy src/nanodsp tests/ --exclude '.venv'
 
       - name: Run tests
         run: uv run pytest tests/ -v --cov=src/nanodsp --cov-report=xml

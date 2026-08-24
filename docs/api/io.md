@@ -1,6 +1,8 @@
 # I/O
 
-Read and write WAV (8/16/24/32-bit PCM) and FLAC (16/24-bit) files. WAV uses the Python stdlib `wave` module; FLAC uses the CHOC codec.
+Read and write WAV (8/16/24/32-bit PCM, plus 32/64-bit IEEE float) and FLAC (16/24-bit) files. WAV is parsed and written directly -- a RIFF chunk walker in `io.py`, not the stdlib `wave` module, which cannot read float or `WAVE_FORMAT_EXTENSIBLE` data. FLAC uses the CHOC codec.
+
+Note the argument order: the writers take the **destination first**, `io.write(path, buf)`, unlike `soundfile.write` and `scipy.io.wavfile.write`.
 
 ## Usage examples
 

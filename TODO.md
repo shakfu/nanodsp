@@ -61,12 +61,19 @@
   never demonstrated to be the cause of the observed divergence that started the
   investigation. `chorus`, `flanger` and `phaser` are pinned in
   `tests/GOLDEN.json`; if one of those fingerprints ever moves, the hypothesis
-  was wrong and the real cause is still open. Full write-up, including what was
+  was wrong and the real cause is still open. That check is only now actually
+  running: the fixture used to be stamped for a single platform and skipped
+  everywhere else, including CI, so nothing had been verifying it. Full write-up, including what was
   ruled out and how to investigate a recurrence:
   [`docs/devs/daisysp-chorus-anomaly.md`](docs/devs/daisysp-chorus-anomaly.md).
 
-- [ ] **Vendored patches must be re-applied on upgrade.** Six local fixes live
-  in `thirdparty/` (two STK heap overflows, STK wall-clock seeding, and three
-  DaisySP uninitialised-state bugs). They are all marked in place --
+- [ ] **Vendored patches must be re-applied on upgrade.** Eleven local fixes
+  live in `thirdparty/` (two STK heap overflows, STK wall-clock seeding, six
+  DaisySP uninitialised-state bugs, the DaisySP bitcrush gain/sign defect, and
+  the shared `static Fold` in the same file). They are all marked in place --
   `grep -rn "nanodsp local patch" thirdparty/` -- and tabulated in
   `thirdparty/VERSIONS.md`. Run `make asan` after any vendored upgrade.
+
+  Note that `make asan` does not cover the uninitialised-read family; see the
+  note under "Local patches" in `thirdparty/VERSIONS.md`. The golden
+  fingerprints are what actually pin those.

@@ -8,7 +8,7 @@ High-performance Python DSP toolkit built on C++ libraries via [nanobind](https:
 |---------|---------|------------------|
 | [signalsmith-dsp](https://signalsmith-audio.co.uk/code/dsp/) | MIT | Filters, FFT, delay, envelopes, spectral processing, rates, mix |
 | [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | MIT | High-quality time-stretching and pitch-shifting |
-| [DaisySP](https://github.com/electro-smith/DaisySP) | MIT | Oscillators, effects, dynamics, drums, physical modeling, noise |
+| [DaisySP](https://github.com/electro-smith/DaisySP) | MIT + LGPL-2.1 | Oscillators, effects, dynamics, drums, physical modeling, noise |
 | [STK](https://github.com/thestk/stk) | MIT | Physical modeling instruments, generators, filters, delays, effects |
 | [madronalib](https://github.com/madronalabs/madronalib) | MIT | FDN reverbs, resampling, generators, projections, windows |
 | [HISSTools Library](https://github.com/AlexHarker/HISSTools_Library) | BSD-3 | Convolution, spectral processing, statistical analysis, windows |
@@ -81,7 +81,9 @@ nanodsp process *.wav -O out/ -f reverb:preset=hall -j 0
 # Report peak / true peak / loudness before and after the chain
 nanodsp process input.wav -o out.wav --stats -f compress:ratio=4
 
-# Stream a file larger than RAM: constant memory, identical output
+# Stream a file larger than RAM: constant memory, identical output except
+# for channel-linked dynamics, which run unlinked when streamed (the CLI
+# says so; note that -q suppresses that message)
 nanodsp process huge.wav -o out.wav --stream -f lowpass:cutoff_hz=2000
 
 # Effects taking a second buffer: prefix the value with @ to load a file
@@ -1040,4 +1042,15 @@ uv run python tests/test_golden.py --update
 
 ## License
 
-MIT
+nanodsp's own code is MIT. A built wheel statically links the vendored C++
+backends, so it is a combined work: `MIT AND LGPL-2.1-only AND BSD-3-Clause AND
+ISC`. Every notice is reproduced in
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md), which ships inside the
+wheel, and the corresponding source is vendored under `thirdparty/` and included
+in the sdist.
+
+The LGPL-2.1 component is DaisySP-LGPL, which supplies `Compressor`, `ReverbSc`,
+`MoogLadder`, `BlOsc`, `Bitcrush`, `Fold`, `Pluck`, `Tone` and `Comb` among
+others -- all reachable from the public API, so it is not an optional part.
+Embedding nanodsp in a proprietary product means taking on LGPL-2.1 section 6
+for that component.

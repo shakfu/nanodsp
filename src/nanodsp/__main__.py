@@ -578,7 +578,16 @@ def _run_parallel(
     GIL, so the DSP work genuinely runs in parallel, and threads avoid pickling
     buffers across a process boundary. Each file is independent -- the chain
     steps hold only configuration, and every effect builds its own DSP objects
-    per call -- so no state is shared between workers.
+    per call.
+
+    That covers the DSP objects, not everything they touch. Two pieces of
+    process-global state remain, both inside vendored C++: the C library
+    ``rand()`` stream, which ``stk.set_random_seed()`` reseeds for the whole
+    process rather than per thread, and the function-local ``static`` seed in
+    DaisySP's ``PitchShifter``, which ``Process()`` mutates with the GIL
+    released. A chain containing ``pitch_shift`` is therefore not bit-for-bit
+    reproducible under ``-j`` and races on that counter. Everything else is
+    genuinely independent.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 

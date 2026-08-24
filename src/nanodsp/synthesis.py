@@ -63,6 +63,18 @@ from nanodsp._core import fxdsp as _fxdsp
 _DEFAULT_SEED = 0
 
 
+def _check_frames(frames: int) -> None:
+    """Reject a negative sample count before it reaches the C++ layer.
+
+    The generator bindings allocate ``new float[frames]``, so a negative value
+    would otherwise surface as ``MemoryError: std::bad_array_new_length``, which
+    says nothing about which argument was wrong. Zero is legal and produces an
+    empty buffer.
+    """
+    if frames < 0:
+        raise ValueError(f"frames must be non-negative, got {frames}")
+
+
 def _seed_global_rng(seed: int) -> None:
     """Seed the C rand() stream shared by STK Noise and the DaisySP generators.
 
@@ -109,6 +121,7 @@ def oscillator(
     >>> round(buf.duration, 3)
     1.0
     """
+    _check_frames(frames)
     wf = _resolve_waveform(waveform, _WAVEFORM_MAP)
     osc = _dsy_osc.Oscillator()
     osc.init(sample_rate)
@@ -138,6 +151,7 @@ def fm2(
     index : float
         Modulation index, >= 0. Higher = more sidebands. Typical: 0--10.
     """
+    _check_frames(frames)
     fm = _dsy_osc.Fm2()
     fm.init(sample_rate)
     fm.set_frequency(freq)
@@ -165,6 +179,7 @@ def formant_oscillator(
     phase_shift : float
         Phase shift in radians. Typical: 0 to 2*pi.
     """
+    _check_frames(frames)
     fo = _dsy_osc.FormantOscillator()
     fo.init(sample_rate)
     fo.set_carrier_freq(carrier_freq)
@@ -189,6 +204,7 @@ def bl_oscillator(
     waveform : int or str
         Waveform constant or name: "triangle"/"tri", "saw", "square", "off".
     """
+    _check_frames(frames)
     wf = _resolve_waveform(waveform, _BLOSC_WAVEFORM_MAP)
     osc = _dsy_osc.BlOsc()
     osc.init(sample_rate)
@@ -211,6 +227,7 @@ def white_noise(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate white noise."""
+    _check_frames(frames)
     wn = _dsy_noise.WhiteNoise()
     wn.init()
     wn.set_amp(amp)
@@ -225,6 +242,7 @@ def clocked_noise(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate clocked (sample-and-hold) noise."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     cn = _dsy_noise.ClockedNoise()
@@ -241,6 +259,7 @@ def dust(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate Dust (random impulses at given density)."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     d = _dsy_noise.Dust()
@@ -268,6 +287,7 @@ def _synth_triggered(
     at *sample_rate*, each setter applied, triggered once, and rendered to
     *frames* mono samples.
     """
+    _check_frames(frames)
     obj.init(sample_rate)
     for name, value in setters.items():
         getattr(obj, name)(value)
@@ -288,6 +308,7 @@ def analog_bass_drum(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate an analog bass drum hit (triggered at sample 0)."""
+    _check_frames(frames)
     return _synth_triggered(
         _dsy_drums.AnalogBassDrum(),
         {
@@ -316,6 +337,7 @@ def analog_snare_drum(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate an analog snare drum hit (triggered at sample 0)."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     return _synth_triggered(
@@ -345,6 +367,7 @@ def hihat(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a hi-hat hit (triggered at sample 0)."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     return _synth_triggered(
@@ -376,6 +399,7 @@ def synthetic_bass_drum(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a synthetic bass drum hit (triggered at sample 0)."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     return _synth_triggered(
@@ -407,6 +431,7 @@ def synthetic_snare_drum(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a synthetic snare drum hit (triggered at sample 0)."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     return _synth_triggered(
@@ -461,6 +486,7 @@ def modal_voice(
     sample_rate: float = 48000.0,
 ) -> AudioBuffer:
     """Generate a modal voice hit (triggered at sample 0)."""
+    _check_frames(frames)
     return _synth_triggered(
         _dsy_pm.ModalVoice(),
         {
@@ -488,6 +514,7 @@ def string_voice(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a string voice hit (triggered at sample 0)."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     return _synth_triggered(
@@ -515,6 +542,7 @@ def pluck(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a plucked string sound (triggered at sample 0)."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     npt = max(256, int(sample_rate / freq) + 1)
@@ -534,6 +562,7 @@ def drip(
     seed: int = _DEFAULT_SEED,
 ) -> AudioBuffer:
     """Generate a water-drip sound (triggered at sample 0)."""
+    _check_frames(frames)
     _seed_global_rng(seed)
 
     d = _dsy_pm.Drip()
@@ -670,6 +699,7 @@ def polyblep(
     sample_rate : float
         Output sample rate.
     """
+    _check_frames(frames)
     key = waveform.lower()
     if key not in _POLYBLEP_WAVEFORMS:
         raise ValueError(
@@ -701,6 +731,7 @@ def blit_saw(
     sample_rate : float
         Output sample rate.
     """
+    _check_frames(frames)
     osc = _blosc.BlitSaw(sample_rate, freq)
     if harmonics > 0:
         osc.set_harmonics(harmonics)
@@ -727,6 +758,7 @@ def blit_square(
     sample_rate : float
         Output sample rate.
     """
+    _check_frames(frames)
     osc = _blosc.BlitSquare(sample_rate, freq)
     if harmonics > 0:
         osc.set_harmonics(harmonics)
@@ -750,6 +782,7 @@ def dpw_saw(
     sample_rate : float
         Output sample rate.
     """
+    _check_frames(frames)
     osc = _blosc.DPWSaw(sample_rate, freq)
     data = np.asarray(osc.generate(frames))
     return AudioBuffer(data.reshape(1, -1), sample_rate=sample_rate)
@@ -774,6 +807,7 @@ def dpw_pulse(
     sample_rate : float
         Output sample rate.
     """
+    _check_frames(frames)
     osc = _blosc.DPWPulse(sample_rate, freq)
     osc.duty = duty
     data = np.asarray(osc.generate(frames))
@@ -816,6 +850,7 @@ def minblep(
     sample_rate : float
         Output sample rate.
     """
+    _check_frames(frames)
     key = waveform.lower()
     if key not in _MINBLEP_WAVEFORMS:
         raise ValueError(
