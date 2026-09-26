@@ -37,12 +37,6 @@ jobs:
       - name: Run tests
         run: uv run pytest tests/ -v --cov=src/nanodsp --cov-report=xml
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        with:
-          files: coverage.xml
-          fail_ci_if_error: false
-
   build:
     name: Build (${{ matrix.os }}/py${{ matrix.python-version }})
     needs: qa
