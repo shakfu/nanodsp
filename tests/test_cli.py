@@ -1046,8 +1046,8 @@ class TestCLIEndToEnd:
 # ---------------------------------------------------------------------------
 # Regression tests for reviewed CLI defects
 #
-# Each class below pins behaviour that was previously wrong. See REVIEW.md for
-# the reproductions these were written from.
+# Each class below pins behaviour that was previously wrong. The CHANGELOG
+# entries describe the reproductions these were written from.
 # ---------------------------------------------------------------------------
 
 

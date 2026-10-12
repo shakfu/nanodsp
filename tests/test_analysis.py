@@ -442,14 +442,11 @@ class TestPitchDetect:
         with pytest.raises(ValueError, match="Unknown"):
             analysis.pitch_detect(buf, method="autocorrelation")
 
-    def test_fmin_above_fmax_returns_unvoiced(self):
-        """When fmin >= fmax, tau_min >= tau_max so no valid pitch is found."""
+    def test_fmin_above_fmax_raises(self):
+        """fmin >= fmax has no valid lag range; it is a caller error, not silence."""
         buf = AudioBuffer.sine(440.0, frames=16384, sample_rate=48000.0)
-        freqs, confs = analysis.pitch_detect(
-            buf, window_size=4096, fmin=2000.0, fmax=100.0
-        )
-        assert np.all(freqs == 0.0)
-        assert np.all(confs == 0.0)
+        with pytest.raises(ValueError, match="fmin"):
+            analysis.pitch_detect(buf, window_size=4096, fmin=2000.0, fmax=100.0)
 
 
 class TestOnsetDetect:

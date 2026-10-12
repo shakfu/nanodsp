@@ -389,6 +389,11 @@ def process_blocks(
     AudioBuffer
         Processed audio, same length as input.
     """
+    if block_size < 1:
+        raise ValueError(f"block_size must be >= 1, got {block_size}")
+    if hop_size is not None and hop_size < 1:
+        # hop_size=0 never advanced and looped forever.
+        raise ValueError(f"hop_size must be >= 1, got {hop_size}")
     if hop_size is None or hop_size >= block_size:
         # Non-overlapping: simple chunking
         n_frames = buf.frames

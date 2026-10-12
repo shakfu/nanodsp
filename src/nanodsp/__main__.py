@@ -125,8 +125,7 @@ def cmd_info(args: argparse.Namespace) -> None:
     from nanodsp.analysis import loudness_lufs
 
     buf = _read_input(args.file, args)
-    peak = float(np.max(np.abs(buf.data)))
-    peak_db = 20.0 * np.log10(peak) if peak > 0 else float("-inf")
+    peak_db = _peak_db(buf)
     lufs = loudness_lufs(buf)
 
     ext = Path(args.file).suffix.lower()
@@ -626,14 +625,16 @@ def _run_parallel(
     steps hold only configuration, and every effect builds its own DSP objects
     per call.
 
-    That covers the DSP objects, not everything they touch. Two pieces of
-    process-global state remain, both inside vendored C++: the C library
-    ``rand()`` stream, which ``stk.set_random_seed()`` reseeds for the whole
-    process rather than per thread, and the function-local ``static`` seed in
-    DaisySP's ``PitchShifter``, which ``Process()`` mutates with the GIL
-    released. A chain containing ``pitch_shift`` is therefore not bit-for-bit
-    reproducible under ``-j`` and races on that counter. Everything else is
-    genuinely independent.
+    That covers the DSP objects, not everything they touch. Process-global
+    state inside vendored C++ remains:
+
+    - The C library ``rand()`` stream, which ``stk.set_random_seed()`` reseeds
+      for the whole process rather than per thread.
+    - The function-local ``static`` seed in DaisySP's ``PitchShifter``, which
+      ``Process()`` mutates with the GIL released. A chain containing
+      ``pitch_shift`` is not bit-for-bit reproducible under ``-j``.
+    - STK's sample rate. The STK wrappers hold ``_helpers._STK_LOCK`` so
+      files at different rates cannot retune each other's STK objects.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -775,8 +776,7 @@ def _analyze_info(buf: AudioBuffer, args: argparse.Namespace) -> None:
     """Combined analysis summary."""
     from nanodsp import analysis as _analysis
 
-    peak = float(np.max(np.abs(buf.data)))
-    peak_db = 20.0 * np.log10(peak) if peak > 0 else float("-inf")
+    peak_db = _peak_db(buf)
     lufs = _analysis.loudness_lufs(buf)
 
     info = {
@@ -817,6 +817,15 @@ def _analyze_info(buf: AudioBuffer, args: argparse.Namespace) -> None:
 _SYNTH_SUBCOMMANDS = {"sine", "noise", "drum", "note", "sequence", "oscillator", "fm"}
 
 
+_DRUMS = (
+    "analog_bass_drum",
+    "analog_snare_drum",
+    "hihat",
+    "synthetic_bass_drum",
+    "synthetic_snare_drum",
+)
+
+
 def cmd_synth(args: argparse.Namespace) -> None:
     """Generate audio and write to file."""
     from nanodsp import synthesis as _synthesis
@@ -837,10 +846,13 @@ def cmd_synth(args: argparse.Namespace) -> None:
     elif subcmd == "drum":
         drum_type = args.type or "analog_bass_drum"
         freq = float(args.freq or 60.0)
-        drum_fn = getattr(_synthesis, drum_type, None)
-        if drum_fn is None:
-            print(f"Unknown drum type: {drum_type!r}", file=sys.stderr)
+        if drum_type not in _DRUMS:
+            print(
+                f"Unknown drum type: {drum_type!r}; choose from {', '.join(_DRUMS)}",
+                file=sys.stderr,
+            )
             sys.exit(1)
+        drum_fn = getattr(_synthesis, drum_type)
         buf = drum_fn(frames, freq=freq, sample_rate=sr)
 
     elif subcmd == "oscillator":
@@ -889,7 +901,14 @@ def cmd_synth(args: argparse.Namespace) -> None:
         except json.JSONDecodeError as e:
             print(f"Invalid JSON for --notes: {e}", file=sys.stderr)
             sys.exit(1)
-        notes = [(n["freq"], n["start"], n["dur"]) for n in raw]
+        try:
+            notes = [(n["freq"], n["start"], n["dur"]) for n in raw]
+        except (KeyError, TypeError):
+            print(
+                'Each --notes entry needs "freq", "start" and "dur"',
+                file=sys.stderr,
+            )
+            sys.exit(1)
         velocity = float(args.velocity or 0.8)
         release = float(args.release or 0.1)
         buf = _synthesis.synth_sequence(
@@ -928,8 +947,11 @@ def cmd_convert(args: argparse.Namespace) -> None:
             buf = resample(buf, target_sr)
 
     # Channel conversion
-    if args.channels:
+    if args.channels is not None:
         target_ch = int(args.channels)
+        if target_ch < 1:
+            print(f"--channels must be >= 1, got {target_ch}", file=sys.stderr)
+            sys.exit(1)
         if target_ch != buf.channels:
             _log_verbose(args, f"  Converting {buf.channels}ch -> {target_ch}ch")
             if target_ch == 1:
@@ -1105,6 +1127,10 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     params = coerce_params(fn, raw_params)
+
+    if int(args.iterations) < 1:
+        print("--iterations must be >= 1", file=sys.stderr)
+        sys.exit(1)
 
     sr = float(args.sample_rate)
     duration = float(args.duration)
@@ -1590,7 +1616,13 @@ def main(argv: list[str] | None = None) -> None:
         parser.print_help()
         sys.exit(1)
 
-    handler(args)
+    try:
+        handler(args)
+    except _IO_ERRORS + _DSP_ERRORS as e:
+        # Handlers report the errors they anticipate; this catches the rest
+        # (bad option values, malformed --notes) as a message, not a traceback.
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

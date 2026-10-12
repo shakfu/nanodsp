@@ -691,9 +691,13 @@ class BlockWriter:
         self.channels = channels
         self.bit_depth = bit_depth
         self._frames = 0
+        # Placeholder sizes of 0xFFFFFFFF, which readers clamp to the file
+        # length, so an unclosed or crashed writer leaves a readable file. Built
+        # before open() so a bad sample_rate does not truncate the path.
+        header = bytearray(self._header(0))
+        header[4:8] = header[-4:] = b"\xff\xff\xff\xff"
         self._fh: IO[bytes] | None = open(self.path, "wb")
-        # Placeholder header; sizes are patched in close().
-        self._fh.write(self._header(0))
+        self._fh.write(bytes(header))
 
     def _header(self, data_size: int) -> bytes:
         stub = AudioBuffer(
@@ -716,20 +720,27 @@ class BlockWriter:
             raise ValueError(
                 f"BlockWriter opened for {self.channels} channel(s), got {buf.channels}"
             )
+        if buf.sample_rate != self.sample_rate:
+            raise ValueError(
+                f"BlockWriter opened at {self.sample_rate} Hz, got {buf.sample_rate} Hz"
+            )
+        # Checked here, not only in close(): past 4 GB the header cannot be
+        # patched, and the bytes already written would be unreadable.
+        if self._data_size(self._frames + buf.frames) + 44 > 0xFFFFFFFF:
+            raise ValueError(
+                "WAV output would exceed the 4 GB RIFF limit; split the file or write FLAC"
+            )
         self._fh.write(_encode_wav_frames(buf, self.bit_depth))
         self._frames += buf.frames
+
+    def _data_size(self, frames: int) -> int:
+        return frames * self.channels * (self.bit_depth // 8)
 
     def close(self) -> None:
         """Patch the header with the final sizes and close the file."""
         if self._fh is None:
             return
-        data_size = self._frames * self.channels * (self.bit_depth // 8)
-        if data_size + 44 > 0xFFFFFFFF:
-            self._fh.close()
-            self._fh = None
-            raise ValueError(
-                "WAV output exceeds the 4 GB RIFF limit; split the file or write FLAC"
-            )
+        data_size = self._data_size(self._frames)
         self._fh.seek(0)
         self._fh.write(self._header(data_size))
         self._fh.close()

@@ -126,8 +126,11 @@ public:
         for (int i = 0; i < num_taps_; ++i) {
             scaled_taps_[i] = (int)(ref_taps_[i] * scale);
         }
+        // Sized from the rate: capping at 4096 let taps above ~51 kHz index
+        // before the start of the buffer.
         buf_size_ = (int)(3520 * scale) + 1;
-        buf_size_ = std::min(buf_size_, (int)buffer_.size());
+        buffer_.assign(buf_size_, 0.0f);
+        write_pos_ = 0;
     }
 
     float process(float x) {
@@ -171,6 +174,10 @@ public:
     void init(float sample_rate) {
         sr_ = sample_rate;
         float scale = sample_rate / 48000.0f;
+        // Lines sized from the rate; fixed 4096 clamped every comb to the
+        // same length above ~93 kHz. The margin covers the Moorer LFO.
+        for (auto& c : comb_) c = FeedbackComb((int)(2098.0f * scale) + 256);
+        for (auto& a : apf_)  a = AllpassSection((int)(240.0f * scale) + 256);
 
         comb_[0].set_delay(1426.0f * scale);
         comb_[1].set_delay(1781.0f * scale);
@@ -247,6 +254,10 @@ public:
     void init(float sample_rate) {
         sr_ = sample_rate;
         float scale = sample_rate / 48000.0f;
+        // Lines sized from the rate; fixed 4096 clamped every comb to the
+        // same length above ~93 kHz. The margin covers the Moorer LFO.
+        for (auto& c : comb_) c = FeedbackComb((int)(2098.0f * scale) + 256);
+        for (auto& a : apf_)  a = AllpassSection((int)(240.0f * scale) + 256);
 
         er_.set_sample_rate(sample_rate);
 

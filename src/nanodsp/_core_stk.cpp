@@ -532,6 +532,7 @@ static void bind_stk_effects(nb::module_ &m) {
         }, "input_l"_a, "input_r"_a = 0.0f)
         // Stereo process (2D input [2, frames])
         .def("process", [](FreeVerb &s, Array2F input) {
+            if (input.shape(0) != 2) throw std::invalid_argument("Expected [2, frames] input");
             size_t n = input.shape(1);
             auto *out = new float[2 * n];
             const float *l = input.data();

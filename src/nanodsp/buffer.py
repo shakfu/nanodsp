@@ -311,7 +311,8 @@ class AudioBuffer:
         sample_rate: float = 48000.0,
         **kw,
     ) -> AudioBuffer:
-        t = np.arange(frames, dtype=np.float32) / sample_rate
+        # Phase in float64: float32 time stamps lose -35 dB of accuracy by 60 s.
+        t = np.arange(frames, dtype=np.float64) / sample_rate
         row = np.sin(2.0 * np.pi * freq * t).astype(np.float32)
         arr = np.tile(row, (channels, 1))
         return cls(arr, sample_rate=sample_rate, **kw)

@@ -795,7 +795,8 @@ def modal_bandpass(
     freq_hz : float
         Resonant frequency in Hz.
     q : float
-        Quality factor.
+        Quality factor, > 0. The resonator is not gain-normalised: a sine at
+        *freq_hz* gains about 57 dB at the default 500.
 
     Returns
     -------
@@ -803,6 +804,7 @@ def modal_bandpass(
         Filtered audio.
     """
     _validate_freq_hz(freq_hz, buf.sample_rate)
+    _validate_q(q)
 
     def _process(x):
         m = _dsy_filt.Mode()
@@ -862,8 +864,15 @@ _VA_FILTER_CLASSES = {
 }
 
 
+def _validate_q(q: float) -> None:
+    # q <= 0 gave NaN (modal) or +65 dB of gain (VA filters) instead of an error.
+    if not 0 < q < float("inf"):
+        raise ValueError(f"q must be positive and finite, got {q}")
+
+
 def _va_filter(buf: AudioBuffer, cls, cutoff_hz: float, q: float) -> AudioBuffer:
     _validate_freq_hz(cutoff_hz, buf.sample_rate)
+    _validate_q(q)
 
     def _process(x):
         f = cls()
@@ -1015,6 +1024,7 @@ def va_oberheim(
         Filtered audio.
     """
     _validate_freq_hz(cutoff_hz, buf.sample_rate)
+    _validate_q(q)
     mode_map = {"lpf": 0, "hpf": 1, "bpf": 2, "bsf": 3}
     mode_int = mode_map.get(mode)
     if mode_int is None:

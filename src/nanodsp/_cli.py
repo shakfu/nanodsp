@@ -584,7 +584,39 @@ def load_user_presets() -> dict[str, dict[str, Any]]:
         raise ValueError(
             f"User presets file {path} must be a JSON object mapping names to presets"
         )
+    for name, preset in data.items():
+        problem = _preset_shape_error(preset)
+        if problem:
+            raise ValueError(f"User preset {name!r} in {path}: {problem}")
     return data
+
+
+def _preset_shape_error(preset: Any) -> str | None:
+    """Describe why *preset* is not a valid preset definition, or return None."""
+    if not isinstance(preset, dict):
+        return "must be an object"
+    if "fn" in preset:
+        if not isinstance(preset["fn"], str) or "." not in preset["fn"]:
+            return '"fn" must be a "module.function" string'
+        if not isinstance(preset.get("defaults", {}), dict):
+            return '"defaults" must be an object'
+    elif "chain" in preset:
+        steps = preset["chain"]
+        if not isinstance(steps, list) or not all(
+            isinstance(st, (list, tuple))
+            and len(st) == 3
+            and isinstance(st[0], str)
+            and isinstance(st[1], str)
+            and isinstance(st[2], dict)
+            for st in steps
+        ):
+            return '"chain" must be a list of ["module", "function", {params}] steps'
+    else:
+        return "must define 'fn' or 'chain'"
+    for key in ("description", "category"):
+        if key in preset and not isinstance(preset[key], str):
+            return f'"{key}" must be a string'
+    return None
 
 
 def get_presets() -> dict[str, dict[str, Any]]:
@@ -775,13 +807,25 @@ def parse_fx_token(token: str) -> tuple[str, dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 
+_TRUE = ("true", "1", "yes", "on")
+_FALSE = ("false", "0", "no", "off")
+
+
 def coerce_value(value: str, target_type: type | None) -> Any:
     """Coerce a string value to the target type.
 
     If target_type is None, tries bool -> int -> float -> str.
     """
     if target_type is bool:
-        return value.lower() in ("true", "1", "yes", "on")
+        lowered = value.lower()
+        if lowered in _TRUE:
+            return True
+        if lowered in _FALSE:
+            return False
+        # Anything else used to read as False, so a typo silently flipped a flag.
+        raise ValueError(
+            f"expected a boolean ({'/'.join(_TRUE)} or {'/'.join(_FALSE)}), got {value!r}"
+        )
     if target_type is int:
         return int(value)
     if target_type is float:

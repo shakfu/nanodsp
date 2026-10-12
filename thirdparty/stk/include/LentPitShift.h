@@ -23,11 +23,13 @@ class LentPitShift : public Effect
   //! Class constructor.
   LentPitShift( StkFloat periodRatio = 1.0, int tMax = RT_BUFFER_SIZE );
 
+  // nanodsp local patch: the arrays come from new[]; upstream freed them with
+  // scalar delete (undefined behaviour; ASan alloc-dealloc-mismatch).
   ~LentPitShift( void ) {
-    delete window;
-    delete dt;
-    delete dpt;
-    delete cumDt;
+    delete[] window;
+    delete[] dt;
+    delete[] dpt;
+    delete[] cumDt;
   }
 
   //! Reset and clear all internal state.

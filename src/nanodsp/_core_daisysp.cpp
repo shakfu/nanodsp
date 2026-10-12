@@ -102,6 +102,8 @@ static void bind_daisysp_oscillators(nb::module_ &m) {
         .def("set_freq", &HO::SetFreq, "freq"_a)
         .def("set_first_harm_idx", &HO::SetFirstHarmIdx, "idx"_a)
         .def("set_amplitudes", [](HO &self, ArrayF amps) {
+            // SetAmplitudes reads 16 floats whatever the array length.
+            if (amps.shape(0) != 16) throw std::invalid_argument("Expected 16 amplitudes");
             self.SetAmplitudes(amps.data());
         }, "amplitudes"_a, "Set all harmonic amplitudes from array.")
         .def("set_single_amp", &HO::SetSingleAmp, "amp"_a, "idx"_a)

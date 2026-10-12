@@ -43,6 +43,25 @@ from nanodsp._core import madronalib as _madronalib
 # ---------------------------------------------------------------------------
 
 
+def _delay_class(interpolation: str) -> Any:
+    if interpolation == "cubic":
+        return _delay.DelayCubic
+    if interpolation == "linear":
+        return _delay.Delay
+    raise ValueError(
+        f"interpolation must be 'linear' or 'cubic', got {interpolation!r}"
+    )
+
+
+def _check_delay_range(lo: float, hi: float, cls: Any, capacity: int) -> None:
+    """Reject delays the ring buffer would silently wrap."""
+    if not (cls.latency <= lo and hi <= capacity and np.isfinite(hi)):
+        raise ValueError(
+            f"delay must be in [{cls.latency}, {capacity}] samples, got "
+            f"{lo if lo < cls.latency else hi}"
+        )
+
+
 def delay(
     buf: AudioBuffer,
     delay_samples: float,
@@ -56,7 +75,8 @@ def delay(
     buf : AudioBuffer
         Input audio.
     delay_samples : float
-        Delay amount in samples, >= 0 (fractional for interpolated delay).
+        Delay amount in samples, 0--capacity (fractional for interpolated
+        delay). Cubic interpolation needs >= 1.
     capacity : int or None
         Delay line capacity. If None, auto-sized from delay_samples.
     interpolation : str
@@ -67,14 +87,15 @@ def delay(
     AudioBuffer
         Delayed audio.
     """
+    cls = _delay_class(interpolation)
+    if not np.isfinite(delay_samples):
+        raise ValueError(f"delay must be finite, got {delay_samples}")
     cap = capacity if capacity is not None else int(delay_samples) + 64
+    _check_delay_range(float(delay_samples), float(delay_samples), cls, cap)
 
     def _process(x):
-        if interpolation == "cubic":
-            d = _delay.DelayCubic(cap)
-        else:
-            d = _delay.Delay(cap)
-        return d.process(x, delay_samples)
+        # The interpolator's own latency is part of the delay asked for.
+        return cls(cap).process(x, float(delay_samples) - cls.latency)
 
     return _process_per_channel(buf, _process)
 
@@ -117,16 +138,19 @@ def delay_varying(
             f"delays has {delays_2d.shape[1]} frames, buffer has {buf.frames}"
         )
 
-    max_delay = int(np.max(delays_2d)) + 64
+    cls = _delay_class(interpolation)
+    if delays_2d.size:
+        lo, hi = float(np.min(delays_2d)), float(np.max(delays_2d))
+        if not (np.isfinite(lo) and np.isfinite(hi)):
+            raise ValueError("delays must be finite")
+    else:
+        lo = hi = float(cls.latency)
+    max_delay = int(hi) + 64
+    _check_delay_range(lo, hi, cls, max_delay)
     out = np.zeros_like(buf.data)
     for ch in range(buf.channels):
-        d: _delay.Delay | _delay.DelayCubic
-        if interpolation == "cubic":
-            d = _delay.DelayCubic(max_delay)
-        else:
-            d = _delay.Delay(max_delay)
-        ch_delays = np.ascontiguousarray(delays_2d[ch])
-        out[ch] = d.process_varying(buf.ensure_1d(ch), ch_delays)
+        ch_delays = np.ascontiguousarray(delays_2d[ch] - np.float32(cls.latency))
+        out[ch] = cls(max_delay).process_varying(buf.ensure_1d(ch), ch_delays)
 
     return AudioBuffer(
         out,
@@ -787,9 +811,12 @@ def _apply_fade_curve(
 
 
 def pan(buf: AudioBuffer, position: float = 0.0) -> AudioBuffer:
-    """Pan a signal using equal-power panning.
+    """Pan mono with an equal-power law, or balance stereo.
 
-    Mono input produces stereo output. Stereo input scales L/R gains.
+    Mono input produces stereo output at -3 dB per side at centre. Stereo
+    input is balanced: unity at centre, the far side fading linearly to
+    silence at the extremes. With more than two channels only the first two
+    are affected.
 
     Parameters
     ----------
@@ -803,6 +830,8 @@ def pan(buf: AudioBuffer, position: float = 0.0) -> AudioBuffer:
     AudioBuffer
         Panned audio (stereo if mono input).
     """
+    if not -1.0 <= position <= 1.0:
+        raise ValueError(f"position must be in [-1, 1], got {position}")
     theta = (position + 1.0) / 2.0 * (np.pi / 2.0)
     left_gain = np.float32(np.cos(theta))
     right_gain = np.float32(np.sin(theta))
@@ -818,11 +847,10 @@ def pan(buf: AudioBuffer, position: float = 0.0) -> AudioBuffer:
             label=buf.label,
         )
 
-    # Stereo or multi-channel: scale first two channels
+    # Balance: an equal-power law here cut a centred stereo mix by 3 dB.
     out = buf.data.copy()
-    out[0] *= left_gain
-    if buf.channels >= 2:
-        out[1] *= right_gain
+    out[0] *= np.float32(min(1.0, 1.0 - position))
+    out[1] *= np.float32(min(1.0, 1.0 + position))
     return AudioBuffer(
         out,
         sample_rate=buf.sample_rate,

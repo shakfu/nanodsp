@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import functools
+import threading
+from typing import Any, Callable, TypeVar
+
 import numpy as np
 
 from nanodsp.buffer import AudioBuffer
@@ -13,6 +17,25 @@ from nanodsp._core import stk as _stk
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+# STK's sample rate is process-global, and Stk::setSampleRate retunes every
+# live STK object, including one another thread is processing with the GIL
+# released. Holding this from set_sample_rate through processing serialises
+# STK work only; everything else stays parallel.
+_STK_LOCK = threading.RLock()
+
+
+def _stk_serialized(fn: _F) -> _F:
+    """Run *fn* while holding the STK sample-rate lock."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        with _STK_LOCK:
+            return fn(*args, **kwargs)
+
+    return wrapper  # type: ignore[return-value]
 
 
 def _validate_freq_hz(freq_hz: float, sample_rate: float) -> None:

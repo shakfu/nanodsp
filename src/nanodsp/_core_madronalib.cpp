@@ -173,8 +173,14 @@ struct FDNWrapper {
     std::array<ml::OnePole, SIZE> mFilters;
     std::array<ml::DSPVector, SIZE> mDelayInputVectors{};
     std::array<float, SIZE> mFeedbackGains{};
+    // Delay buffers are empty until setDelaysInSamples; process() would index them.
+    bool configured = false;
 
     void setDelaysInSamples(std::array<float, SIZE> times) {
+        for (float t : times)
+            if (!(t >= 1.f && t <= (float)(1 << 24)))
+                throw std::invalid_argument("FDN delay times must be in [1, 2^24] samples");
+        configured = true;
         for (int n = 0; n < SIZE; ++n) {
             int len = (int)times[n] - (int)kFloatsPerDSPVector;
             if (len < 1) len = 1;
@@ -254,6 +260,8 @@ static void bind_fdn(nb::module_ &mod, const char *name, const char *doc) {
             return std::vector<float>(self.mFeedbackGains.begin(), self.mFeedbackGains.end());
         })
         .def("process", [](FDNType &self, ArrayF input) -> NpF2 {
+            if (!self.configured)
+                throw std::runtime_error("call set_delays_in_samples() before process()");
             return ml_process_stereo(input, [&](const DSPVector &v) {
                 return self(v);
             });
@@ -265,17 +273,29 @@ static void bind_fdn(nb::module_ &mod, const char *name, const char *doc) {
 // ============================================================================
 
 static void bind_pitchbendable_delay(nb::module_ &mod) {
-    nb::class_<ml::PitchbendableDelay>(mod, "PitchbendableDelay",
+    // The delay lines have no buffer until set_max_delay_in_samples, and
+    // delays beyond the maximum index past it.
+    struct PBD : ml::PitchbendableDelay { float max_delay = -1.f; };
+    nb::class_<PBD>(mod, "PitchbendableDelay",
         "Click-free modulating delay with internal crossfading")
         .def(nb::init<>())
-        .def("set_max_delay_in_samples",
-             &ml::PitchbendableDelay::setMaxDelayInSamples, "max_delay"_a)
-        .def("clear", &ml::PitchbendableDelay::clear)
-        .def("process", [](ml::PitchbendableDelay &self,
-                           ArrayF input, ArrayF delay_samples) -> NpF1 {
+        .def("set_max_delay_in_samples", [](PBD &self, float d) {
+            if (!(d >= 1.f && d <= (float)(1 << 24)))
+                throw std::invalid_argument("max_delay must be in [1, 2^24] samples");
+            self.setMaxDelayInSamples(d);
+            self.max_delay = d;
+        }, "max_delay"_a)
+        .def("clear", [](PBD &self) { self.clear(); })
+        .def("process", [](PBD &self, ArrayF input, ArrayF delay_samples) -> NpF1 {
+            if (self.max_delay < 0.f)
+                throw std::runtime_error("call set_max_delay_in_samples() before process()");
             if (input.shape(0) != delay_samples.shape(0))
                 throw std::invalid_argument(
                     "input and delay_samples must have the same length");
+            const float *d = delay_samples.data();
+            for (size_t i = 0; i < delay_samples.shape(0); ++i)
+                if (!(d[i] >= 0.f && d[i] <= self.max_delay))
+                    throw std::invalid_argument("delay_samples must be in [0, max_delay]");
             return ml_process2(input, delay_samples,
                 [&](const DSPVector &vIn, const DSPVector &vDelay) {
                     return self(vIn, vDelay);
@@ -288,9 +308,17 @@ static void bind_pitchbendable_delay(nb::module_ &mod) {
 // ============================================================================
 
 static void bind_resampling(nb::module_ &mod) {
+    // octaves == 0 leaves _numBuffers uninitialised in madronalib.
+    auto check_octaves = [](int octaves) {
+        if (octaves < 1 || octaves > 16)
+            throw std::invalid_argument("octaves must be in [1, 16], got " + std::to_string(octaves));
+    };
     nb::class_<ml::Downsampler>(mod, "Downsampler",
         "Octave downsampling via cascaded half-band filters")
-        .def(nb::init<int>(), "octaves"_a)
+        .def("__init__", [check_octaves](ml::Downsampler *self, int octaves) {
+            check_octaves(octaves);
+            new (self) ml::Downsampler(octaves);
+        }, "octaves"_a)
         .def("clear", &ml::Downsampler::clear)
         .def("process", [](ml::Downsampler &self, ArrayF input) -> NpF1 {
             size_t n = input.shape(0);
@@ -320,11 +348,22 @@ static void bind_resampling(nb::module_ &mod) {
             return make_f1(out, out_n);
         }, "input"_a);
 
-    nb::class_<ml::Upsampler>(mod, "Upsampler",
+    struct Up : ml::Upsampler {
+        int octaves;
+        explicit Up(int o) : ml::Upsampler(o), octaves(o) {}
+    };
+    nb::class_<Up>(mod, "Upsampler",
         "Octave upsampling via cascaded half-band filters")
-        .def(nb::init<int>(), "octaves"_a)
-        .def("clear", &ml::Upsampler::clear)
-        .def("process", [](ml::Upsampler &self, ArrayF input, int octaves) -> NpF1 {
+        .def("__init__", [check_octaves](Up *self, int octaves) {
+            check_octaves(octaves);
+            new (self) Up(octaves);
+        }, "octaves"_a)
+        .def("clear", [](Up &self) { self.clear(); })
+        .def("process", [](Up &self, ArrayF input, int octaves) -> NpF1 {
+            // The read count must match the filter cascade built in __init__.
+            if (octaves != self.octaves)
+                throw std::invalid_argument("octaves must match the constructor ("
+                    + std::to_string(self.octaves) + "), got " + std::to_string(octaves));
             size_t n = input.shape(0);
             if (n % kBlock != 0)
                 throw std::invalid_argument(

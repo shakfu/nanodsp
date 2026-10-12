@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-Fixes from the third project review; findings and status are in `REVIEW.md`. Outputs change for `fm2`, `minblep`, `multiband_compress`, `master`, `daisysp.pitch_shift`, loudness, YIN, `xcorr`, `phase_lock` and every STFT-based function. Linux golden fingerprints are regenerated; the `darwin-arm64` block needs `python tests/test_golden.py --update` on a Mac.
+Fixes from the third project review; findings left open are in `TODO.md`. Outputs change for `fm2`, `minblep`, `multiband_compress`, `master`, `daisysp.pitch_shift`, loudness, YIN, `xcorr`, `phase_lock` and every STFT-based function. Linux golden fingerprints are regenerated; the `darwin-arm64` block needs `python tests/test_golden.py --update` on a Mac.
 
 ### Changed
 
@@ -18,7 +18,44 @@ Fixes from the third project review; findings and status are in `REVIEW.md`. Out
 
 - **`xcorr` and `gcc_phat` return the correlation in `np.correlate(a, b, "full")` order**, as documented; lag 0 is at index `len_b - 1`. They returned the circular layout.
 
+- **Stereo `ops.pan` is a balance law**: unity at centre, the far side fading to silence. The mono equal-power law applied to stereo cut a centred mix by 3 dB. `position` outside [-1, 1] now raises.
+
+- **`lookahead_limit` output is time-aligned with its input.** It was delayed by the lookahead (5 ms by default), and the last 5 ms of input was lost.
+
+- **`onset_detect` reports onsets about `window_size / 2` later than before**, which is where they are. Flux at frame `i` was timed at frame `i`'s start rather than between frames `i-1` and `i`.
+
+- **Inputs that used to fail silently now raise `ValueError`.**
+  - `ops.delay` beyond its capacity, negative, or non-finite.
+  - `q <= 0` in `modal_bandpass` and the VA filters.
+  - `pitch_detect` with `fmin >= fmax`.
+  - `process_blocks` with `hop_size < 1`.
+  - Misspelt boolean CLI parameters (`link=ture`).
+  - Malformed user presets, at load time.
+  - Shape, index and setup errors throughout the `_core` bindings (`STFT`, `Hadamard`, `Householder`, `PitchbendableDelay`, `FDN*`, `Upsampler`, `Downsampler`, grainflow `Panner`/`GrainCollection`, hisstools `PartialTracker`/`change_phase`, `HarmonicOscillator`, `FreeVerb`). Several of these crashed the interpreter.
+
 ### Fixed
+
+- **`ops.delay(..., interpolation="cubic")` delayed by one sample more than asked**, the cubic interpolator's latency.
+
+- **`make asan` did not work on Linux.** It now runs clean.
+  - The runtime was preloaded only on macOS. On Linux the first C++ exception aborted the run inside ASan, and the target still printed "clean" or an empty report.
+  - Once it ran, it found `stk::LentPitShift` freeing `new[]` arrays with scalar `delete`. That is now patched.
+
+- **`fxdsp` Schroeder/Moorer reverbs read out of bounds above about 51 kHz.** Early-reflection taps scaled with the rate but the buffer was capped at 4096; comb lines were similarly capped.
+
+- **STK work from several threads could retune each other.** STK's sample rate is process-global. The STK wrappers now share a lock, so `process -j` over files at different rates is safe.
+
+- **`BlockWriter` left an unreadable file when not closed**, because the header recorded 0 frames. It also checked the 4 GB limit only at close, after the data was written.
+
+- **`pitch_detect` silently missed `fmin` at high sample rates.** 55 Hz was never voiced at 96 kHz with the default window, which is now grown to fit.
+
+- **Smaller fixes.**
+  - `convolution_reverb(tail=True)` clipped the tail by the pre-delay.
+  - `AudioBuffer.sine` lost accuracy over long buffers (float32 phase, -35 dB error at 60 s).
+  - `make clean` deleted every `.so` in `.venv`.
+  - The CLI showed tracebacks for bad option values and on empty files.
+
+- **CI tests the built wheel**, not the editable install, and fails on unformatted code. The publish workflow has read-only default permissions, a SHA-pinned publish action, and refuses a manual publish from any ref other than `main` or a tag.
 
 - **Crashes from the public API.**
   - `reverb_sc` overflowed its delay buffer above 48 kHz (segfault at 88.2 kHz).

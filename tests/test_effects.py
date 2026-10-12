@@ -1234,17 +1234,12 @@ class TestLookaheadLimit:
         assert np.max(np.abs(result.data)) <= threshold_lin + 1e-4
 
     def test_quiet_signal_unchanged(self):
-        """Signal well below threshold should pass through (delayed)."""
+        """Signal well below threshold passes through, time-aligned and complete."""
         buf = AudioBuffer.sine(440.0, frames=8192, sample_rate=48000.0) * 0.1
         result = dynamics.lookahead_limit(buf, threshold_db=-1.0)
-        # Signal is ~-20 dBFS, threshold is -1 dBFS -> no reduction
-        lookahead = max(1, int(48000 * 5.0 / 1000.0))
-        # Compare delayed input to output
-        np.testing.assert_allclose(
-            result.data[:, lookahead:],
-            buf.data[:, : buf.frames - lookahead],
-            atol=1e-5,
-        )
+        # Signal is ~-20 dBFS, threshold is -1 dBFS -> no reduction. The
+        # lookahead delay is compensated, so no sample is shifted or lost.
+        np.testing.assert_allclose(result.data, buf.data, atol=1e-5)
 
     def test_stereo_shape(self):
         buf = AudioBuffer.noise(channels=2, frames=8192, sample_rate=48000.0, seed=0)

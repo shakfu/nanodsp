@@ -307,34 +307,53 @@ static void bind_envelopes(nb::module_ &m) {
 
 static void bind_spectral(nb::module_ &m) {
     auto mod = m.def_submodule("spectral", "STFT and spectral processing");
-    using STFT = signalsmith::spectral::STFT<float>;
+    // The vendored STFT reads fft_size() samples per channel and indexes
+    // spectrum[ch] unchecked; it keeps its channel count private.
+    struct STFT : signalsmith::spectral::STFT<float> {
+        int nch;
+        STFT(int c, int w, int i, int h, int z) : signalsmith::spectral::STFT<float>(c, w, i, h, z), nch(c) {}
+        void check_channel(int ch) const {
+            if (ch < 0 || ch >= nch)
+                throw std::out_of_range("STFT: channel " + std::to_string(ch) + " out of range [0, "
+                    + std::to_string(nch) + ")");
+        }
+        // Copy into an fft_size() buffer, zero-padded when the input is shorter.
+        std::vector<float> padded(const float *p, size_t n) {
+            std::vector<float> v((size_t)fftSize(), 0.f);
+            std::copy(p, p + std::min(n, v.size()), v.begin());
+            return v;
+        }
+    };
     using Complex = std::complex<float>;
 
     nb::class_<STFT>(mod, "STFT", "Short-Time Fourier Transform with overlap-add synthesis.")
-        .def(nb::init<int, int, int, int, int>(),
-            "channels"_a, "window_size"_a, "interval"_a, "history_length"_a = 0, "zero_padding"_a = 0)
-        .def("window_size", &STFT::windowSize)
-        .def("fft_size", &STFT::fftSize)
-        .def("interval", &STFT::interval)
-        .def("bands", &STFT::bands)
-        .def("latency", &STFT::latency)
-        .def("reset", &STFT::reset)
+        .def("__init__", [](STFT *self, int channels, int window_size, int interval, int history_length, int zero_padding) {
+            if (channels < 1 || window_size < 1 || interval < 1 || history_length < 0 || zero_padding < 0)
+                throw std::invalid_argument("STFT: channels, window_size and interval must be >= 1");
+            new (self) STFT(channels, window_size, interval, history_length, zero_padding);
+        }, "channels"_a, "window_size"_a, "interval"_a, "history_length"_a = 0, "zero_padding"_a = 0)
+        .def("window_size", [](STFT &self) { return self.windowSize(); })
+        .def("fft_size", [](STFT &self) { return self.fftSize(); })
+        .def("interval", [](STFT &self) { return self.interval(); })
+        .def("bands", [](STFT &self) { return self.bands(); })
+        .def("latency", [](STFT &self) { return self.latency(); })
+        .def("reset", [](STFT &self) { self.reset(); })
         .def("analyse", [](STFT &self, Array2F input) {
-            int frames = (int)input.shape(1);
-            struct CD { const float *base; int stride;
-                struct Ch { const float *d; float operator[](int i) const { return d[i]; } };
-                Ch operator[](int c) const { return {base + c * stride}; }
-            };
-            CD cd{input.data(), frames};
+            if ((int)input.shape(0) != self.nch)
+                throw std::invalid_argument("STFT.analyse: expected " + std::to_string(self.nch)
+                    + " channels, got " + std::to_string(input.shape(0)));
+            size_t frames = input.shape(1);
+            std::vector<std::vector<float>> chans;
+            for (int c = 0; c < self.nch; ++c) chans.push_back(self.padded(input.data() + c * frames, frames));
             { nb::gil_scoped_release rel;
-              self.analyse(cd);
+              for (int c = 0; c < self.nch; ++c) self.analyse(c, chans[c].data());
             }
         }, "input"_a, "Analyse multi-channel input [channels, frames] into spectrum.")
         .def("analyse_channel", [](STFT &self, int channel, ArrayF input) {
-            struct D { const float *p; float operator[](int i) const { return p[i]; } };
-            D d{input.data()};
+            self.check_channel(channel);
+            auto buf = self.padded(input.data(), input.shape(0));
             { nb::gil_scoped_release rel;
-              self.analyse(channel, d);
+              self.analyse(channel, buf.data());
             }
         }, "channel"_a, "input"_a, "Analyse a single channel from 1-D float32.")
         .def("get_spectrum", [](STFT &self) {
@@ -344,12 +363,14 @@ static void bind_spectral(nb::module_ &m) {
             return make_cf1(out, (size_t)bands);
         }, "Get spectrum for channel 0.")
         .def("get_spectrum_channel", [](STFT &self, int ch) {
+            self.check_channel(ch);
             int bands = self.bands();
             auto *out = new Complex[bands];
             std::copy(self.spectrum[ch], self.spectrum[ch] + bands, out);
             return make_cf1(out, (size_t)bands);
         }, "channel"_a)
         .def("set_spectrum_channel", [](STFT &self, int ch, ArrayCF data) {
+            self.check_channel(ch);
             int bands = self.bands();
             if ((int)data.shape(0) != bands) throw std::invalid_argument("Spectrum size must match bands()");
             std::copy(data.data(), data.data() + bands, self.spectrum[ch]);
@@ -454,23 +475,45 @@ static void bind_rates(nb::module_ &m) {
 static void bind_mix(nb::module_ &m) {
     auto mod = m.def_submodule("mix", "Multichannel mixing utilities");
 
-    using DynHad = signalsmith::mix::Hadamard<float, -1>;
+    // inPlace() processes `size` elements whatever the array length.
+    auto check_mix_len = [](size_t n, int size, const char *who) {
+        if (n != (size_t)size)
+            throw std::invalid_argument(std::string(who) + ": expected " + std::to_string(size)
+                + " elements, got " + std::to_string(n));
+    };
+    struct DynHad : signalsmith::mix::Hadamard<float, -1> {
+        int n;
+        explicit DynHad(int s) : Hadamard(s), n(s) {}
+    };
     nb::class_<DynHad>(mod, "Hadamard", "Hadamard mixing matrix (dynamic size, power of 2).")
-        .def(nb::init<int>(), "size"_a)
-        .def("in_place", [](const DynHad &self, ArrayF data) {
+        .def("__init__", [](DynHad *self, int size) {
+            if (size < 1 || (size & (size - 1)))
+                throw std::invalid_argument("Hadamard: size must be a power of 2, got " + std::to_string(size));
+            new (self) DynHad(size);
+        }, "size"_a)
+        .def("in_place", [check_mix_len](const DynHad &self, ArrayF data) {
             size_t n = data.shape(0);
+            check_mix_len(n, self.n, "Hadamard.in_place");
             auto *out = new float[n];
             std::copy(data.data(), data.data() + n, out);
             self.inPlace(out);
             return make_f1(out, n);
         }, "data"_a, "Apply scaled orthogonal Hadamard, returning new array.")
-        .def("scaling_factor", &DynHad::scalingFactor);
+        .def("scaling_factor", [](const DynHad &self) { return self.scalingFactor(); });
 
-    using DynHouse = signalsmith::mix::Householder<float, -1>;
+    struct DynHouse : signalsmith::mix::Householder<float, -1> {
+        int n;
+        explicit DynHouse(int s) : Householder(s), n(s) {}
+    };
     nb::class_<DynHouse>(mod, "Householder", "Householder reflection matrix (dynamic size).")
-        .def(nb::init<int>(), "size"_a)
-        .def("in_place", [](const DynHouse &self, ArrayF data) {
+        .def("__init__", [](DynHouse *self, int size) {
+            if (size < 1)
+                throw std::invalid_argument("Householder: size must be >= 1, got " + std::to_string(size));
+            new (self) DynHouse(size);
+        }, "size"_a)
+        .def("in_place", [check_mix_len](const DynHouse &self, ArrayF data) {
             size_t n = data.shape(0);
+            check_mix_len(n, self.n, "Householder.in_place");
             auto *out = new float[n];
             std::copy(data.data(), data.data() + n, out);
             self.inPlace(out);

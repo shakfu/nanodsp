@@ -1,4 +1,4 @@
-"""Regression tests for the defects recorded in REVIEW.md.
+"""Regression tests for the defects fixed in the third project review (see CHANGELOG.md).
 
 Each test asserts on the failure as observed -- a crash, a hang, a wrong pitch,
 a wrong level -- rather than on shape, which is what let most of them ship.
@@ -405,3 +405,219 @@ def test_timestretch_rejects_non_finite(fn, stretch):
 
     with pytest.raises(ValueError, match="finite"):
         getattr(timestretch, fn)(AudioBuffer.sine(440.0, frames=4800), stretch=stretch)
+
+
+# ---------------------------------------------------------------------------
+# Medium findings
+# ---------------------------------------------------------------------------
+
+
+def _impulse(frames: int = 400, at: int = 0) -> AudioBuffer:
+    x = np.zeros((1, frames), dtype=np.float32)
+    x[0, at] = 1.0
+    return AudioBuffer(x)
+
+
+@pytest.mark.parametrize("interpolation", ["linear", "cubic"])
+@pytest.mark.parametrize("d", [1, 5, 63])
+def test_delay_lands_where_asked(interpolation, d):
+    """The cubic interpolator's 1-sample latency was added to every delay."""
+    out = ops.delay(_impulse(), d, interpolation=interpolation)
+    assert int(np.argmax(np.abs(out.data[0]))) == d
+
+
+@pytest.mark.parametrize("d, cap", [(100, 10), (-5, None), (float("inf"), None)])
+def test_delay_rejects_values_that_wrap(d, cap):
+    with pytest.raises(ValueError, match="delay"):
+        ops.delay(_impulse(), d, capacity=cap)
+
+
+def test_stereo_pan_is_unity_at_centre():
+    out = ops.pan(AudioBuffer.ones(2, 16), 0.0)
+    np.testing.assert_allclose(out.data, 1.0)
+    with pytest.raises(ValueError):
+        ops.pan(AudioBuffer.ones(2, 16), 1.5)
+
+
+def test_sine_phase_is_accurate_over_long_buffers():
+    sr, frames = 48000.0, 48000 * 60
+    x = AudioBuffer.sine(1000.0, frames=frames, sample_rate=sr).data[0, -48000:]
+    t = np.arange(frames - 48000, frames, dtype=np.float64) / sr
+    assert np.max(np.abs(x - np.sin(2 * np.pi * 1000.0 * t))) < 1e-6
+
+
+def test_convolution_reverb_tail_includes_pre_delay():
+    from nanodsp.effects.reverb import convolution_reverb
+
+    ir = _impulse(2000, at=1500)
+    out = convolution_reverb(
+        _impulse(100), ir, mix=1.0, pre_delay_ms=10.0, tail=True, normalize=False
+    )
+    assert out.frames == 100 + 1999 + 480
+    assert int(np.argmax(np.abs(out.data[0]))) == 1500 + 480
+
+
+@pytest.mark.parametrize(
+    "fn",
+    [
+        lambda b: filters.modal_bandpass(b, q=0.0),
+        lambda b: filters.va_oberheim(b, q=0.0),
+        lambda b: filters.va_moog_ladder(b, q=-1.0),
+    ],
+)
+def test_filter_q_must_be_positive(fn):
+    with pytest.raises(ValueError, match="q must be"):
+        fn(AudioBuffer.sine(440.0, frames=480))
+
+
+def test_onsets_are_not_reported_early():
+    rng = np.random.default_rng(0)
+    x = (rng.standard_normal(48000) * 0.001).astype(np.float32)
+    tone = np.sin(2 * np.pi * 440 * np.arange(2000) / SR).astype(np.float32)
+    for s in (10000, 30000):
+        x[s : s + 2000] += tone
+    from nanodsp.analysis import onset_detect
+
+    onsets = onset_detect(AudioBuffer(x[None]))
+    # Within one hop (512) of the truth; the frame start was ~800 early.
+    np.testing.assert_allclose(onsets, [10000, 30000], atol=256)
+
+
+def test_pitch_detect_reaches_fmin_at_high_rates():
+    freqs, _ = pitch_detect(AudioBuffer.sine(55.0, frames=96000, sample_rate=96000.0))
+    assert (freqs > 0).all()
+    assert float(np.median(freqs)) == pytest.approx(55.0, rel=0.01)
+
+
+@pytest.mark.parametrize("hop", [0, -1])
+def test_process_blocks_rejects_non_positive_hop(hop):
+    from nanodsp.stream import process_blocks
+
+    with pytest.raises(ValueError, match="hop_size"):
+        process_blocks(AudioBuffer.sine(440.0, frames=100), lambda b: b, 10, hop)
+
+
+def test_unclosed_block_writer_is_readable(tmp_path):
+    path = tmp_path / "u.wav"
+    w = io.BlockWriter(path, 48000.0)
+    w.write(AudioBuffer.sine(440.0, frames=1000))
+    w._fh.flush()  # type: ignore[union-attr]
+    assert io.read(path).frames == 1000
+    w.close()
+    assert io.read(path).frames == 1000
+
+
+def test_block_writer_refuses_to_pass_4gb(tmp_path):
+    w = io.BlockWriter(tmp_path / "big.wav", 48000.0, channels=2)
+    w._frames = (0xFFFFFFFF - 44) // 4
+    with pytest.raises(ValueError, match="4 GB"):
+        w.write(AudioBuffer.sine(440.0, channels=2, frames=10))
+    w._frames = 0
+    w.close()
+
+
+@pytest.mark.parametrize("cls", ["SchroederReverb", "MoorerReverb"])
+def test_fxdsp_reverbs_at_192k(cls):
+    from nanodsp._core import fxdsp
+
+    rev = getattr(fxdsp, cls)()
+    rev.init(192000.0)
+    out = np.asarray(rev.process(np.ones(19200, dtype=np.float32) * 0.1))
+    assert np.isfinite(out).all()
+
+
+def _raises_from_core(fn) -> None:
+    with pytest.raises((ValueError, IndexError, RuntimeError)):
+        fn()
+
+
+@pytest.mark.parametrize(
+    "fn",
+    [
+        lambda c: c.spectral.STFT(1, 256, 128).get_spectrum_channel(100000),
+        lambda c: c.spectral.STFT(2, 256, 128).analyse(np.zeros((1, 256), np.float32)),
+        lambda c: c.mix.Hadamard(1 << 20).in_place(np.zeros(2, np.float32)),
+        lambda c: c.mix.Householder(1 << 22).in_place(np.zeros(2, np.float32)),
+        lambda c: c.mix.Hadamard(3),
+        lambda c: c.madronalib.delays.PitchbendableDelay().process(
+            np.zeros(64, np.float32), np.zeros(64, np.float32)
+        ),
+        lambda c: c.madronalib.reverbs.FDN4().process(np.zeros(64, np.float32)),
+        lambda c: c.madronalib.resampling.Upsampler(1).process(
+            np.zeros(64, np.float32), 12
+        ),
+        lambda c: c.madronalib.resampling.Downsampler(0),
+        lambda c: c.grainflow.Panner(64, 8, 2).process(
+            np.zeros((64, 64), np.float32), np.zeros((1, 64), np.float32), 1
+        ),
+        lambda c: c.grainflow.GrainCollection(4, 48000).stream_get(10**6),
+        lambda c: c.hisstools.analysis.PartialTracker(4, 4).get_track(10**8),
+        lambda c: c.hisstools.spectral.SpectralProcessor(1024).change_phase(
+            np.zeros(4096, np.float32), 0.5
+        ),
+        lambda c: c.daisysp.oscillators.HarmonicOscillator().set_amplitudes(
+            np.zeros(2, np.float32)
+        ),
+        lambda c: c.stk.effects.FreeVerb().process(np.zeros((1, 64), np.float32)),
+    ],
+)
+def test_core_rejects_out_of_range_shapes_and_indices(fn):
+    """Each of these crashed the interpreter or read out of bounds."""
+    from nanodsp import _core
+
+    _raises_from_core(lambda: fn(_core))
+
+
+def test_stk_functions_hold_the_sample_rate_lock():
+    from nanodsp.effects import reverb
+
+    for fn in (synthesis.synth_note, synthesis.synth_sequence, reverb.stk_reverb):
+        assert hasattr(fn, "__wrapped__"), fn.__name__
+
+
+def test_bool_parameter_typo_is_an_error():
+    from nanodsp._cli import coerce_value
+
+    assert coerce_value("off", bool) is False
+    with pytest.raises(ValueError, match="boolean"):
+        coerce_value("ture", bool)
+
+
+def test_malformed_user_preset_is_reported(tmp_path, monkeypatch):
+    from nanodsp import _cli
+
+    path = tmp_path / "presets.json"
+    path.write_text(json.dumps({"foo": ["oops"]}))
+    monkeypatch.setenv("NANODSP_PRESETS", str(path))
+    with pytest.raises(ValueError, match="'foo'"):
+        _cli.load_user_presets()
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["process", "IN", "-o", "OUT", "-f", "lowpass:1000"],
+        ["synth", "OUT", "sine", "--freq", "abc"],
+        ["synth", "OUT", "drum", "--type", "synth_note"],
+        ["convert", "IN", "OUT", "--sample-rate", "-5"],
+        ["convert", "IN", "OUT", "--channels", "0"],
+    ],
+)
+def test_cli_errors_exit_cleanly(argv, tmp_path, capsys):
+    src = tmp_path / "in.wav"
+    _write(src, frames=4800)
+    argv = [
+        str(src) if a == "IN" else str(tmp_path / "out.wav") if a == "OUT" else a
+        for a in argv
+    ]
+    with pytest.raises(SystemExit) as exc:
+        main(argv)
+    assert exc.value.code == 1
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_info_on_empty_file(tmp_path, capsys):
+    path = tmp_path / "empty.wav"
+    io.write(path, AudioBuffer.zeros(1, 0))
+    main(["info", str(path), "--json"])
+    assert json.loads(capsys.readouterr().out)["frames"] == 0

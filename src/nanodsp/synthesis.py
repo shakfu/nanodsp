@@ -40,6 +40,7 @@ from nanodsp._helpers import (
     _dsy_noise,
     _dsy_drums,
     _dsy_pm,
+    _stk_serialized,
     _STK_INSTRUMENTS,
 )
 from nanodsp._core import stk as _stk
@@ -579,6 +580,7 @@ def drip(
 # ---------------------------------------------------------------------------
 
 
+@_stk_serialized
 def synth_note(
     instrument: str,
     freq: float = 440.0,
@@ -866,6 +868,7 @@ def minblep(
     return AudioBuffer(data.reshape(1, -1), sample_rate=sample_rate)
 
 
+@_stk_serialized
 def synth_sequence(
     instrument: str,
     notes: list[tuple[float, float, float]],

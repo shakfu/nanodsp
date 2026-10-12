@@ -432,9 +432,11 @@ def lookahead_limit(
 ) -> AudioBuffer:
     """Brick-wall limiter with lookahead for transparent peak control.
 
-    Delays the audio by *lookahead_ms* so the gain curve can begin
-    reducing *before* a peak arrives, avoiding distortion on transients.
-    The output should never exceed *threshold_db*.
+    Looks *lookahead_ms* ahead so the gain curve can begin reducing *before*
+    a peak arrives, avoiding distortion on transients. The output should
+    never exceed *threshold_db*. The lookahead delay is compensated, so the
+    output is time-aligned with the input. Channels are limited
+    independently, which can shift the stereo image on one-sided peaks.
 
     Parameters
     ----------
@@ -446,12 +448,20 @@ def lookahead_limit(
         Gain recovery time in seconds, > 0. Typical: 0.05--0.5.
     """
 
+    # Same float32 arithmetic as LookaheadLimiter::set_lookahead_ms.
+    latency = max(
+        1,
+        int(np.float32(buf.sample_rate) * np.float32(lookahead_ms) / np.float32(1000)),
+    )
+
     def _process(x):
         lim = _fxdsp.LookaheadLimiter()
         lim.init(buf.sample_rate)
         lim.set_threshold_db(threshold_db)
         lim.set_lookahead_ms(lookahead_ms)
         lim.set_release(release)
-        return lim.process(x)
+        # Flush the delay line with silence, then drop the leading delay.
+        padded = np.concatenate([x, np.zeros(latency, dtype=np.float32)])
+        return lim.process(padded)[latency:]
 
     return _process_per_channel(buf, _process)

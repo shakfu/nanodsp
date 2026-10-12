@@ -26,7 +26,7 @@ from typing import Literal
 import numpy as np
 
 from ..buffer import AudioBuffer
-from .._helpers import _process_per_channel, _stk_fx
+from .._helpers import _process_per_channel, _stk_fx, _stk_serialized
 from .._core import madronalib as _madronalib
 from .._core import stk as _stk
 from .._core import fxdsp as _fxdsp
@@ -260,6 +260,7 @@ def moorer_reverb(
 # ---------------------------------------------------------------------------
 
 
+@_stk_serialized
 def stk_reverb(
     buf: AudioBuffer,
     algorithm: Literal["freeverb", "jcrev", "nrev", "prcrev"] = "freeverb",
@@ -336,6 +337,7 @@ def stk_reverb(
     )
 
 
+@_stk_serialized
 def stk_chorus(
     buf: AudioBuffer,
     mod_depth: float = 0.05,
@@ -379,6 +381,7 @@ def stk_chorus(
     )
 
 
+@_stk_serialized
 def stk_echo(
     buf: AudioBuffer,
     delay_ms: float = 250.0,
@@ -430,7 +433,8 @@ def convolution_reverb(
         onset of the reverb back without moving the dry signal, which reads as a
         larger space.
     tail : bool
-        If True the output is extended by ``ir.frames - 1`` so the reverb tail
+        If True the output is extended by ``ir.frames - 1`` plus the pre-delay
+        so the reverb tail
         decays naturally past the end of the input. The default trims to the
         input length, which is what a chain expects.
     normalize : bool
@@ -486,7 +490,8 @@ def convolution_reverb(
         raise ValueError("impulse response is empty")
 
     pre_samples = int(round(buf.sample_rate * pre_delay_ms / 1000.0))
-    out_frames = buf.frames + (ir.frames - 1 if tail else 0)
+    # The tail includes the pre-delay, which is applied to the IR below.
+    out_frames = buf.frames + (ir.frames - 1 + pre_samples if tail else 0)
 
     # Pre-delay is applied to the IR rather than the wet signal: prepending
     # silence to the IR delays the whole response, including the tail, which is

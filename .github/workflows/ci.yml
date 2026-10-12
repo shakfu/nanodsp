@@ -7,6 +7,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   qa:
     name: QA (lint, typecheck, test)
@@ -29,7 +32,7 @@ jobs:
         run: uv run ruff check src/ tests/
 
       - name: Format with ruff
-        run: uv run ruff format src/ tests/
+        run: uv run ruff format --check src/ tests/
 
       - name: Type check with mypy
         run: uv run mypy src/nanodsp tests/ --exclude '.venv'
@@ -64,8 +67,17 @@ jobs:
       - name: Build extension
         run: uv build --wheel
 
-      - name: Run tests
-        run: uv run pytest tests/ -v
+      # Test the wheel that is uploaded, not the editable install `uv sync`
+      # made: packaging mistakes (a missing stub or licence file) only show here.
+      - name: Test the built wheel
+        shell: bash
+        run: |
+          venv="$RUNNER_TEMP/wheel-venv"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          if [ -x "$venv/bin/python" ]; then py="$venv/bin/python"; else py="$venv/Scripts/python.exe"; fi
+          uv pip install --python "$py" dist/*.whl pytest
+          "$py" -c "import nanodsp, sys; assert 'site-packages' in nanodsp.__file__, nanodsp.__file__"
+          "$py" -m pytest tests/ -q
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v7

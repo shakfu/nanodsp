@@ -955,6 +955,12 @@ All C++ block-processing functions release the Python GIL during computation. Th
 
 The CLI uses this for batch work: `nanodsp process *.wav -O out/ -j 0` runs one worker per CPU. Measured 2.67x end-to-end on 8 cores for 8 x 20 s stereo files through a reverb/compress/saturate chain, and closer to 3.9x on the DSP alone once fixed interpreter startup is subtracted. Each file is independent -- effects build their own DSP objects per call and hold no shared state -- so the same pattern is safe in your own code.
 
+Limits on that:
+
+- A low-level `nanodsp._core` object is not locked. Do not call one object from two threads at once; reconfiguring it (for example `IIRFilter.setup()`) while another thread runs `process()` corrupts memory.
+- STK's sample rate is process-global, and changing it retunes every live STK object. The STK-based functions (`synth_note`, `synth_sequence`, `stk_reverb`, `stk_chorus`, `stk_echo`) therefore take a shared lock and run one at a time.
+- The C `rand()` stream and DaisySP's `PitchShifter` seed are process-global, so seeded noise voices and `pitch_shift` are not bit-reproducible under threads.
+
 ### Benchmarking
 
 The CLI provides a built-in benchmark command for measuring function throughput:

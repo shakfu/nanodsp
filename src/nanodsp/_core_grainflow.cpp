@@ -137,15 +137,30 @@ struct GrainCollectionWrapper {
         collection_->stream_set(static_cast<Grainflow::gf_stream_set_type>(mode), nstreams);
     }
     void stream_set_manual(int grain, int stream_id) {
+        check_grain(grain);
         collection_->stream_set(grain, stream_id);
     }
-    int stream_get(int grain) { return collection_->stream_get(grain); }
+    int stream_get(int grain) {
+        check_grain(grain);
+        return collection_->stream_get(grain);
+    }
+    void check_grain(int grain) const {
+        if (grain < 0 || grain >= collection_->grains())
+            throw std::out_of_range("grain " + std::to_string(grain) + " out of range [0, "
+                + std::to_string(collection_->grains()) + ")");
+    }
     int streams() const { return collection_->streams(); }
 
     nb::tuple process(Array2F clock, Array2F traversal, Array2F fm, Array2F am, int samplerate) {
         int block_size = clock.shape(1);
         if (block_size % kGfBlock != 0)
             throw std::invalid_argument("block_size must be a multiple of 64");
+        // GrainflowLib indexes channel 0 of each input (fm with 0 channels
+        // divided by zero) and reads block_size samples from each.
+        for (auto *a : {&clock, &traversal, &fm, &am})
+            if (a->shape(0) < 1 || (int)a->shape(1) != block_size)
+                throw std::invalid_argument(
+                    "clock, traversal, fm and am need >= 1 channel and the same block length");
 
         int clock_chans = clock.shape(0);
         int trav_chans = traversal.shape(0);
@@ -258,7 +273,12 @@ struct PannerWrapper {
     std::unique_ptr<Grainflow::gf_panner<kGfBlock, Grainflow::gf_pan_mode::unipolar, SigType>> panner_unipolar_;
     std::unique_ptr<Grainflow::gf_panner<kGfBlock, Grainflow::gf_pan_mode::stereo, SigType>> panner_stereo_;
 
-    PannerWrapper(int in_channels, int out_channels, int pan_mode) : pan_mode_(pan_mode) {
+    int in_channels_, out_channels_;
+
+    PannerWrapper(int in_channels, int out_channels, int pan_mode)
+        : pan_mode_(pan_mode), in_channels_(in_channels), out_channels_(out_channels) {
+        if (in_channels < 1 || out_channels < 1)
+            throw std::invalid_argument("Panner: in_channels and out_channels must be >= 1");
         switch (pan_mode) {
             case 0:
                 panner_bipolar_ = std::make_unique<
@@ -324,6 +344,12 @@ struct PannerWrapper {
         int block_size = grains.shape(1);
         if (block_size % kGfBlock != 0)
             throw std::invalid_argument("block_size must be a multiple of 64");
+        // The panner was sized for these counts and indexes them unchecked.
+        if (in_channels != in_channels_ || out_channels != out_channels_)
+            throw std::invalid_argument("Panner.process: expected " + std::to_string(in_channels_)
+                + " grain channels and out_channels=" + std::to_string(out_channels_));
+        if (grain_states.shape(0) != grains.shape(0) || grain_states.shape(1) != grains.shape(1))
+            throw std::invalid_argument("grain_states must have the same shape as grains");
 
         // Build grain input pointers
         std::vector<float *> grain_ptrs(in_channels);

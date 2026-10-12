@@ -89,20 +89,32 @@ upgrade:
 # only way to find them. Slow, and it leaves an instrumented build installed --
 # run `make build` afterwards to restore a normal one.
 ASAN_FLAGS = -fsanitize=address -fno-omit-frame-pointer -g
+# The ASan runtime must be loaded before Python. nanobind links a MODULE
+# library, so CMAKE_SHARED_LINKER_FLAGS alone left __asan_* undefined.
+ifeq ($(shell uname -s),Darwin)
+ASAN_PRELOAD = DYLD_INSERT_LIBRARIES="$$(clang -print-file-name=libclang_rt.asan_osx_dynamic.dylib)"
+else
+# libstdc++ too: python3 does not link it, and ASan's __cxa_throw interceptor
+# aborts on the first C++ exception if the real symbol is not yet loaded.
+ASAN_PRELOAD = LD_PRELOAD="$$(c++ -print-file-name=libasan.so) $$(c++ -print-file-name=libstdc++.so)"
+endif
 asan:
 	@echo "Building with AddressSanitizer..."
-	@SKBUILD_CMAKE_ARGS="-DCMAKE_CXX_FLAGS=$(ASAN_FLAGS);-DCMAKE_C_FLAGS=$(ASAN_FLAGS);-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address" \
+	@SKBUILD_CMAKE_ARGS="-DCMAKE_CXX_FLAGS=$(ASAN_FLAGS);-DCMAKE_C_FLAGS=$(ASAN_FLAGS);-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address;-DCMAKE_MODULE_LINKER_FLAGS=-fsanitize=address" \
 		uv sync --reinstall-package nanodsp
 	@rm -f /tmp/nanodsp-asan.*
 	@echo "Running tests under ASan (reports go to /tmp/nanodsp-asan.*)..."
-	@DYLD_INSERT_LIBRARIES="$$(clang -print-file-name=libclang_rt.asan_osx_dynamic.dylib)" \
+	@$(ASAN_PRELOAD) \
 		ASAN_OPTIONS="detect_leaks=0:log_path=/tmp/nanodsp-asan:halt_on_error=0" \
-		./.venv/bin/python -m pytest tests/ -q || true
-	@if ls /tmp/nanodsp-asan.* >/dev/null 2>&1; then \
+		./.venv/bin/python -m pytest tests/ -q; status=$$?; \
+	if ls /tmp/nanodsp-asan.* >/dev/null 2>&1; then \
 		echo "ASan reported errors:"; \
-		grep -h "ERROR: AddressSanitizer" /tmp/nanodsp-asan.* | sort | uniq -c; \
+		grep -hE "ERROR: AddressSanitizer|AddressSanitizer: CHECK failed" /tmp/nanodsp-asan.* | sort | uniq -c; \
 		echo "Full reports: /tmp/nanodsp-asan.*"; \
 		exit 1; \
+	elif [ $$status -ne 0 ]; then \
+		echo "ASan: no reports, but pytest exited $$status (an import failure also lands here)"; \
+		exit $$status; \
 	else \
 		echo "ASan: clean"; \
 	fi
@@ -156,15 +168,16 @@ demos:
 	@uv run python demos/demo_keyframe.py $(DEMO_INPUT)
 
 # Clean build artifacts
+# Scoped to src/ and tests/: `find .` also deleted every .so in .venv.
 clean:
 	@rm -rf build/
 	@rm -rf dist/
 	@rm -rf *.egg-info/
 	@rm -rf src/*.egg-info/
 	@rm -rf .pytest_cache/
-	@find . -name "*.so" -delete
-	@find . -name "*.pyd" -delete
-	@find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+	@find src tests -name "*.so" -delete
+	@find src tests -name "*.pyd" -delete
+	@find src tests -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Clean everything including CMake cache
 distclean: clean

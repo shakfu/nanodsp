@@ -415,6 +415,11 @@ def pitch_detect(
 
     Parameters
     ----------
+    window_size : int
+        Analysis window in samples. Grown to ``2 * ceil(sample_rate / fmin) + 2``
+        when shorter, since the lag search cannot exceed half the window.
+    hop_size : int or None
+        Hop in samples. Defaults to a quarter of the requested *window_size*.
     fmin : float
         Minimum detectable frequency in Hz, > 0. Typical: 50--200.
     fmax : float
@@ -441,7 +446,12 @@ def pitch_detect(
     if hop_size is None:
         hop_size = window_size // 4
 
+    if not 0 < fmin < fmax:
+        raise ValueError(f"need 0 < fmin < fmax, got fmin={fmin}, fmax={fmax}")
     sr = buf.sample_rate
+    # At high rates a fixed window could not reach fmin: 55 Hz at 96 kHz was
+    # silently unvoiced with the default 2048.
+    window_size = max(window_size, 2 * int(np.ceil(sr / fmin)) + 2)
     tau_min = max(1, int(sr / fmax))
     tau_max = min(window_size // 2, int(sr / fmin))
 
@@ -613,8 +623,13 @@ def onset_detect(
         onsets.append(i)
         last_onset = i
 
-    # Convert STFT frame indices to sample indices
-    onset_samples = np.array([i * hop_size for i in onsets], dtype=np.int64)
+    # Flux at frame i compares frames i-1 and i, so it is timed midway between
+    # their window centres. Using the frame start reported ~window/2 early.
+    offset = window_size // 2 - hop_size // 2
+    onset_samples = np.array(
+        [min(i * hop_size + offset, max(buf.frames - 1, 0)) for i in onsets],
+        dtype=np.int64,
+    )
 
     # Optional backtrack: search backward for nearest energy minimum
     if backtrack and len(onset_samples) > 0:

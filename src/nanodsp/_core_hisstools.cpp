@@ -231,16 +231,22 @@ void bind_hisstools(nb::module_ &m) {
         }, nb::arg("in1"), nb::arg("in2"), nb::arg("mode") = SPEdge::Linear)
         .def("change_phase", [](SP &self, ArrayF input, double phase, double time_mul) {
             size_t n = input.shape(0);
+            if (!(time_mul > 0.0 && std::isfinite(time_mul)))
+                throw std::invalid_argument("time_multiplier must be positive and finite");
+            size_t out_size = static_cast<size_t>(std::round(n * time_mul));
+            if (out_size < 1) out_size = 1;
+            uintptr_t fft_size = uintptr_t(1) << SP::calc_fft_size_log2(out_size);
+            // Above max_fft_size the library returns without writing output.
+            if (n > 1 && fft_size > self.max_fft_size())
+                throw std::invalid_argument("change_phase needs an FFT of " + std::to_string(fft_size)
+                    + " > max_fft_size " + std::to_string(self.max_fft_size()));
             const float *in_data = input.data();
             auto *out = new float[n];
             { nb::gil_scoped_release rel;
               std::vector<double> din(n);
               for (size_t i = 0; i < n; i++) din[i] = in_data[i];
-              size_t out_size = static_cast<size_t>(std::round(n * time_mul));
-              if (out_size < 1) out_size = 1;
-              uintptr_t fft_log2 = SP::calc_fft_size_log2(out_size);
-              uintptr_t fft_size = uintptr_t(1) << fft_log2;
-              std::vector<double> dout(fft_size, 0.0);
+              // n samples are copied out below; the FFT may be shorter than n.
+              std::vector<double> dout(std::max<size_t>(fft_size, n), 0.0);
               self.change_phase(dout.data(), din.data(), n, phase, time_mul);
               for (size_t i = 0; i < n; i++) out[i] = static_cast<float>(dout[i]);
             }
@@ -362,7 +368,12 @@ void bind_hisstools(nb::module_ &m) {
                 peaks[i] = nb::cast<PeakF>(peaks_list[i]);
             self.process(peaks.data(), n, start_threshold);
         }, nb::arg("peaks"), nb::arg("start_threshold"))
-        .def("get_track", &PT::get_track, nb::arg("index"), nb::rv_policy::reference_internal)
+        .def("get_track", [](PT &self, size_t index) -> const TrackF & {
+            if (index >= self.max_tracks())
+                throw std::out_of_range("track index " + std::to_string(index) + " out of range [0, "
+                    + std::to_string(self.max_tracks()) + ")");
+            return self.get_track(index);
+        }, nb::arg("index"), nb::rv_policy::reference_internal)
         .def("max_peaks", &PT::max_peaks)
         .def("max_tracks", &PT::max_tracks);
 
