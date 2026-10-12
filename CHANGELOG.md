@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0]
 
 Fixes from the third project review; findings left open are in `TODO.md`. Outputs change for `fm2`, `minblep`, `multiband_compress`, `master`, `daisysp.pitch_shift`, loudness, YIN, `xcorr`, `phase_lock` and every STFT-based function. Linux golden fingerprints are regenerated; the `darwin-arm64` block needs `python tests/test_golden.py --update` on a Mac.
 

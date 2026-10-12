@@ -99,7 +99,6 @@
 - [ ] **Analysis details.**
   - The `resample` power-of-2 path has 2-3 samples of uncompensated latency, and `target_sr <= 0` is not validated.
   - `chromagram` index 0 is A (`tuning_hz`), not C; this is undocumented.
-  - `spectral_flatness` emits a divide-by-zero `RuntimeWarning` on silence.
 
 - [ ] **Effect details.**
   - `stereo_delay(left_ms=0)` delays by the ring length.

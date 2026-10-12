@@ -356,9 +356,14 @@ def spectral_flatness_curve(
     log_mag = np.log(mag + _DIV_EPS)
     geo_mean = np.exp(np.mean(log_mag, axis=2))
     arith_mean = np.mean(mag, axis=2)
-    flatness = np.where(arith_mean > _DIV_EPS, geo_mean / arith_mean, 0.0).astype(
-        np.float32
-    )
+    # Divide only where defined: np.where evaluated the division on silent
+    # frames too, and warned before masking the result.
+    flatness = np.divide(
+        geo_mean,
+        arith_mean,
+        out=np.zeros_like(arith_mean),
+        where=arith_mean > _DIV_EPS,
+    ).astype(np.float32)
     return _squeeze_mono(flatness)
 
 
