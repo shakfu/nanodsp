@@ -211,68 +211,94 @@ static void bind_envelopes(nb::module_ &m) {
             return make_f1(out, (size_t)n);
         }, "n"_a, "Generate n LFO samples.");
 
+    // Lengths below 1 index the ring buffers out of bounds (negative) or divide
+    // by zero (0). PeakHold and BoxStackFilter also cannot grow in set(), so
+    // their maximum is kept to bound it.
+    auto check_len = [](long n, const char *what, long max = -1) {
+        if (n < 1 || (max >= 1 && n > max))
+            throw std::invalid_argument(std::string(what) + " must be in [1, "
+                + (max >= 1 ? std::to_string(max) : std::string("inf")) + "], got "
+                + std::to_string(n));
+    };
+    auto process_env = [](auto &self, ArrayF input) {
+        size_t n = input.shape(0);
+        auto *out = new float[n];
+        const float *in = input.data();
+        { nb::gil_scoped_release rel;
+          for (size_t i = 0; i < n; ++i) out[i] = self(in[i]);
+        }
+        return make_f1(out, n);
+    };
+
     using BoxF = signalsmith::envelopes::BoxFilter<float>;
     nb::class_<BoxF>(mod, "BoxFilter", "Rectangular moving average filter (FIR).")
-        .def(nb::init<int>(), "max_length"_a)
-        .def("resize", &BoxF::resize, "max_length"_a)
-        .def("set", &BoxF::set, "length"_a)
+        .def("__init__", [check_len](BoxF *self, int max_length) {
+            check_len(max_length, "max_length");
+            new (self) BoxF(max_length);
+        }, "max_length"_a)
+        .def("resize", [check_len](BoxF &self, int n) { check_len(n, "max_length"); self.resize(n); }, "max_length"_a)
+        .def("set", [check_len](BoxF &self, int n) { check_len(n, "length"); self.set(n); }, "length"_a)
         .def("reset", &BoxF::reset, "fill"_a = 0.0f)
-        .def("process", [](BoxF &self, ArrayF input) {
-            size_t n = input.shape(0);
-            auto *out = new float[n];
-            const float *in = input.data();
-            { nb::gil_scoped_release rel;
-              for (size_t i = 0; i < n; ++i) out[i] = self(in[i]);
-            }
-            return make_f1(out, n);
-        }, "input"_a);
+        .def("process", [process_env](BoxF &self, ArrayF input) { return process_env(self, input); }, "input"_a);
 
-    using BoxStack = signalsmith::envelopes::BoxStackFilter<float>;
+    struct BoxStack : signalsmith::envelopes::BoxStackFilter<float> {
+        int max_size;
+        BoxStack(int m, int layers) : BoxStackFilter(m, layers), max_size(m) {}
+    };
     nb::class_<BoxStack>(mod, "BoxStackFilter", "FIR filter from stacked box filters.")
-        .def(nb::init<int, int>(), "max_size"_a, "layers"_a = 4)
-        .def("set", &BoxStack::set, "size"_a)
-        .def("reset", &BoxStack::reset, "fill"_a = 0.0f)
-        .def("process", [](BoxStack &self, ArrayF input) {
-            size_t n = input.shape(0);
-            auto *out = new float[n];
-            const float *in = input.data();
-            { nb::gil_scoped_release rel;
-              for (size_t i = 0; i < n; ++i) out[i] = self(in[i]);
-            }
-            return make_f1(out, n);
-        }, "input"_a);
+        .def("__init__", [check_len](BoxStack *self, int max_size, int layers) {
+            check_len(max_size, "max_size");
+            check_len(layers, "layers");
+            new (self) BoxStack(max_size, layers);
+        }, "max_size"_a, "layers"_a = 4)
+        .def("set", [check_len](BoxStack &self, int n) {
+            check_len(n, "size", self.max_size);
+            self.set(n);
+        }, "size"_a)
+        .def("reset", [](BoxStack &self, float fill) { self.reset(fill); }, "fill"_a = 0.0f)
+        .def("process", [process_env](BoxStack &self, ArrayF input) { return process_env(self, input); }, "input"_a);
 
-    using PH = signalsmith::envelopes::PeakHold<float>;
+    struct PH : signalsmith::envelopes::PeakHold<float> {
+        int max_length;
+        explicit PH(int m) : PeakHold(m), max_length(m) {}
+    };
     nb::class_<PH>(mod, "PeakHold", "Variable-size peak-hold filter.")
-        .def(nb::init<int>(), "max_length"_a)
-        .def("resize", &PH::resize, "max_length"_a)
-        .def("set", &PH::set, "new_size"_a, "preserve_current_peak"_a = false)
-        .def("reset", &PH::reset, "fill"_a = std::numeric_limits<float>::lowest())
-        .def("process", [](PH &self, ArrayF input) {
-            size_t n = input.shape(0);
-            auto *out = new float[n];
-            const float *in = input.data();
-            { nb::gil_scoped_release rel;
-              for (size_t i = 0; i < n; ++i) out[i] = self(in[i]);
-            }
-            return make_f1(out, n);
-        }, "input"_a);
+        .def("__init__", [check_len](PH *self, int max_length) {
+            check_len(max_length, "max_length");
+            new (self) PH(max_length);
+        }, "max_length"_a)
+        .def("resize", [check_len](PH &self, int n) {
+            check_len(n, "max_length");
+            self.resize(n);
+            self.max_length = n;
+        }, "max_length"_a)
+        .def("set", [check_len](PH &self, int n, bool preserve) {
+            check_len(n, "new_size", self.max_length);
+            self.set(n, preserve);
+        }, "new_size"_a, "preserve_current_peak"_a = false)
+        .def("reset", [](PH &self, float fill) { self.reset(fill); }, "fill"_a = std::numeric_limits<float>::lowest())
+        .def("process", [process_env](PH &self, ArrayF input) { return process_env(self, input); }, "input"_a);
 
-    using PDL = signalsmith::envelopes::PeakDecayLinear<float>;
+    struct PDL : signalsmith::envelopes::PeakDecayLinear<float> {
+        int max_length;
+        explicit PDL(int m) : PeakDecayLinear(m), max_length(m) {}
+    };
     nb::class_<PDL>(mod, "PeakDecayLinear", "Peak-hold with linear decay.")
-        .def(nb::init<int>(), "max_length"_a)
-        .def("resize", &PDL::resize, "max_length"_a)
-        .def("set", &PDL::set, "length"_a)
-        .def("reset", &PDL::reset, "start"_a = std::numeric_limits<float>::lowest())
-        .def("process", [](PDL &self, ArrayF input) {
-            size_t n = input.shape(0);
-            auto *out = new float[n];
-            const float *in = input.data();
-            { nb::gil_scoped_release rel;
-              for (size_t i = 0; i < n; ++i) out[i] = self(in[i]);
-            }
-            return make_f1(out, n);
-        }, "input"_a);
+        .def("__init__", [check_len](PDL *self, int max_length) {
+            check_len(max_length, "max_length");
+            new (self) PDL(max_length);
+        }, "max_length"_a)
+        .def("resize", [check_len](PDL &self, int n) {
+            check_len(n, "max_length");
+            self.resize(n);
+            self.max_length = n;
+        }, "max_length"_a)
+        .def("set", [check_len](PDL &self, double n) {
+            check_len((long)std::ceil(n), "length", self.max_length);
+            self.set(n);
+        }, "length"_a)
+        .def("reset", [](PDL &self, float start) { self.reset(start); }, "start"_a = std::numeric_limits<float>::lowest())
+        .def("process", [process_env](PDL &self, ArrayF input) { return process_env(self, input); }, "input"_a);
 }
 
 // ============================================================================
@@ -336,46 +362,86 @@ static void bind_spectral(nb::module_ &m) {
 
 static void bind_rates(nb::module_ &m) {
     auto mod = m.def_submodule("rates", "Multi-rate processing (oversampling)");
-    using OS = signalsmith::rates::Oversampler2xFIR<float>;
+    // The vendored class holds 2 * max_block samples per channel and does not
+    // check either bound, so blocks are fed in max_block chunks here.
+    struct OS : signalsmith::rates::Oversampler2xFIR<float> {
+        int channels, max_block;
+        OS(int c, int m, int h, double p) : Oversampler2xFIR(c, m, h, p), channels(c), max_block(m) {}
+        void check_channels(size_t ch) const {
+            if ((int)ch != channels)
+                throw std::invalid_argument("Oversampler2x: expected " + std::to_string(channels)
+                    + " channels, got " + std::to_string(ch));
+        }
+    };
+    struct Ptrs {
+        std::vector<float*> p;
+        float* operator[](int c) const { return p[c]; }
+    };
 
     nb::class_<OS>(mod, "Oversampler2x", "2x FIR oversampling.")
-        .def(nb::init<int, int, int, double>(),
-            "channels"_a, "max_block"_a, "half_latency"_a = 16, "pass_freq"_a = 0.43)
-        .def("reset", &OS::reset)
-        .def("latency", &OS::latency)
+        .def("__init__", [](OS *self, int channels, int max_block, int half_latency, double pass_freq) {
+            if (channels < 1 || max_block < 1 || half_latency < 1)
+                throw std::invalid_argument("Oversampler2x: channels, max_block and half_latency must be >= 1");
+            new (self) OS(channels, max_block, half_latency, pass_freq);
+        }, "channels"_a, "max_block"_a, "half_latency"_a = 16, "pass_freq"_a = 0.43)
+        .def("reset", [](OS &self) { self.reset(); })
+        .def("latency", [](OS &self) { return self.latency(); })
         .def("up", [](OS &self, Array2F input) {
+            self.check_channels(input.shape(0));
             int ch = (int)input.shape(0), fr = (int)input.shape(1);
-            struct P { std::vector<const float*> p; const float* operator[](int c) const { return p[c]; } };
-            P cp; for (int c = 0; c < ch; ++c) cp.p.push_back(input.data() + c * fr);
-            size_t ofr = fr * 2;
+            size_t ofr = (size_t)fr * 2;
             auto *out = new float[ch * ofr];
+            const float *in = input.data();
             { nb::gil_scoped_release rel;
-              self.up(cp, fr);
-              for (int c = 0; c < ch; ++c) std::copy(self[c], self[c] + ofr, out + c * ofr);
+              Ptrs ip; ip.p.resize(ch);
+              for (int off = 0; off < fr; off += self.max_block) {
+                  int n = std::min(self.max_block, fr - off);
+                  for (int c = 0; c < ch; ++c) ip.p[c] = const_cast<float*>(in) + (size_t)c * fr + off;
+                  self.up(ip, n);
+                  for (int c = 0; c < ch; ++c)
+                      std::copy(self[c], self[c] + 2 * n, out + c * ofr + 2 * (size_t)off);
+              }
             }
             return make_f2(out, (size_t)ch, ofr);
         }, "input"_a, "Upsample [channels, frames] -> [channels, frames*2].")
         .def("down", [](OS &self, Array2F input, int low) {
+            self.check_channels(input.shape(0));
+            if (low < 0 || input.shape(1) != 2 * (size_t)low)
+                throw std::invalid_argument("Oversampler2x.down: input must have 2 * low_samples frames");
             int ch = (int)input.shape(0);
-            auto *out = new float[ch * low];
-            struct P { std::vector<float*> p; float* operator[](int c) { return p[c]; } };
-            P op; for (int c = 0; c < ch; ++c) op.p.push_back(out + c * low);
+            size_t ifr = input.shape(1);
+            auto *out = new float[ch * (size_t)low];
+            const float *in = input.data();
             { nb::gil_scoped_release rel;
-              for (int c = 0; c < ch; ++c) std::copy(input.data() + c * input.shape(1), input.data() + (c+1) * input.shape(1), self[c]);
-              self.down(op, low);
+              Ptrs op; op.p.resize(ch);
+              for (int off = 0; off < low; off += self.max_block) {
+                  int n = std::min(self.max_block, low - off);
+                  for (int c = 0; c < ch; ++c) {
+                      const float *src = in + c * ifr + 2 * (size_t)off;
+                      std::copy(src, src + 2 * n, self[c]);
+                      op.p[c] = out + (size_t)c * low + off;
+                  }
+                  self.down(op, n);
+              }
             }
             return make_f2(out, (size_t)ch, (size_t)low);
         }, "input"_a, "low_samples"_a)
         .def("process", [](OS &self, Array2F input) {
+            self.check_channels(input.shape(0));
             int ch = (int)input.shape(0), fr = (int)input.shape(1);
-            struct IP { std::vector<const float*> p; const float* operator[](int c) const { return p[c]; } };
-            IP ip; for (int c = 0; c < ch; ++c) ip.p.push_back(input.data() + c * fr);
-            auto *out = new float[ch * fr];
-            struct OP { std::vector<float*> p; float* operator[](int c) { return p[c]; } };
-            OP op; for (int c = 0; c < ch; ++c) op.p.push_back(out + c * fr);
+            auto *out = new float[ch * (size_t)fr];
+            const float *in = input.data();
             { nb::gil_scoped_release rel;
-              self.up(ip, fr);
-              self.down(op, fr);
+              Ptrs ip, op; ip.p.resize(ch); op.p.resize(ch);
+              for (int off = 0; off < fr; off += self.max_block) {
+                  int n = std::min(self.max_block, fr - off);
+                  for (int c = 0; c < ch; ++c) {
+                      ip.p[c] = const_cast<float*>(in) + (size_t)c * fr + off;
+                      op.p[c] = out + (size_t)c * fr + off;
+                  }
+                  self.up(ip, n);
+                  self.down(op, n);
+              }
             }
             return make_f2(out, (size_t)ch, (size_t)fr);
         }, "input"_a, "Round-trip upsample+downsample. Input: [channels, frames].");

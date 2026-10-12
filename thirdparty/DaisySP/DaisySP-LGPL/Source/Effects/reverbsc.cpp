@@ -55,11 +55,14 @@ int ReverbSc::Init(float sr)
     init_done_     = 1;
     int i, n_bytes = 0;
     n_bytes = 0;
+    // nanodsp local patch: upstream offset the float* aux_ by a byte count and
+    // compared bytes against a float capacity, overrunning aux_ above ~48 kHz.
     for(i = 0; i < 8; i++)
     {
-        if(n_bytes > DSY_REVERBSC_MAX_SIZE)
+        if(n_bytes + DelayLineBytesAlloc(sr, 1, i)
+           > DSY_REVERBSC_MAX_SIZE * (int)sizeof(float))
             return 1;
-        delay_lines_[i].buf = (aux_) + n_bytes;
+        delay_lines_[i].buf = (aux_) + n_bytes / (int)sizeof(float);
         InitDelayLine(&delay_lines_[i], i);
         n_bytes += DelayLineBytesAlloc(sr, 1, i);
     }

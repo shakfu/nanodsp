@@ -960,7 +960,8 @@ def xcorr(buf_a: AudioBuffer, buf_b: AudioBuffer | None = None) -> np.ndarray:
     -------
     np.ndarray
         1D cross-correlation array of length ``len_a + len_b - 1``
-        (or ``2 * len_a - 1`` for autocorrelation).
+        (or ``2 * len_a - 1`` for autocorrelation), ordered as
+        ``np.correlate(a, b, "full")``: lag 0 is at index ``len_b - 1``.
     """
     a = (
         np.mean(buf_a.data, axis=0).astype(np.float64)
@@ -984,7 +985,9 @@ def xcorr(buf_a: AudioBuffer, buf_b: AudioBuffer | None = None) -> np.ndarray:
 
     A = np.fft.rfft(a, n=fft_size)
     B = np.fft.rfft(b, n=fft_size)
-    corr = np.fft.irfft(A * np.conj(B), n=fft_size)[:full_len]
+    circ = np.fft.irfft(A * np.conj(B), n=fft_size)
+    # Negative lags wrap to the end of the circular result.
+    corr = np.concatenate([circ[fft_size - (len(b) - 1) :], circ[: len(a)]])
     return corr.astype(np.float32)
 
 

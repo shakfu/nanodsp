@@ -645,7 +645,7 @@ def stateful_notch(
 
 
 def stateful_moog_ladder(
-    cutoff_hz: float,
+    freq_hz: float = 1000.0,
     resonance: float = 0.0,
     channels: int = 1,
     sample_rate: float = 48000.0,
@@ -660,7 +660,7 @@ def stateful_moog_ladder(
     def factory() -> Any:
         f = _dsy_filt.MoogLadder()
         f.init(sample_rate)
-        f.set_freq(cutoff_hz)
+        f.set_freq(freq_hz)
         f.set_res(resonance)
         return f
 
@@ -740,7 +740,7 @@ def stateful_limit(
 
 
 def stateful_tone_lowpass(
-    cutoff_hz: float,
+    freq_hz: float = 1000.0,
     channels: int = 1,
     sample_rate: float = 48000.0,
 ) -> StatefulProcessor:
@@ -750,14 +750,14 @@ def stateful_tone_lowpass(
     def factory() -> Any:
         f = _dsy_filt.Tone()
         f.init(sample_rate)
-        f.set_freq(cutoff_hz)
+        f.set_freq(freq_hz)
         return f
 
     return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
 
 
 def stateful_tone_highpass(
-    cutoff_hz: float,
+    freq_hz: float = 1000.0,
     channels: int = 1,
     sample_rate: float = 48000.0,
 ) -> StatefulProcessor:
@@ -767,16 +767,17 @@ def stateful_tone_highpass(
     def factory() -> Any:
         f = _dsy_filt.ATone()
         f.init(sample_rate)
-        f.set_freq(cutoff_hz)
+        f.set_freq(freq_hz)
         return f
 
     return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
 
 
 def stateful_ladder_filter(
-    cutoff_hz: float,
+    freq_hz: float = 1000.0,
     resonance: float = 0.0,
     mode: str = "lp24",
+    drive: float = 1.0,
     channels: int = 1,
     sample_rate: float = 48000.0,
 ) -> StatefulProcessor:
@@ -793,9 +794,10 @@ def stateful_ladder_filter(
     def factory() -> Any:
         f = _dsy_filt.LadderFilter()
         f.init(sample_rate)
-        f.set_freq(cutoff_hz)
+        f.set_freq(freq_hz)
         f.set_res(resonance)
         f.set_filter_mode(resolved)
+        f.set_input_drive(drive)
         return f
 
     return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
@@ -841,6 +843,7 @@ def stateful_overdrive(
 def stateful_tremolo(
     freq: float = 5.0,
     depth: float = 0.5,
+    waveform: int = 0,
     channels: int = 1,
     sample_rate: float = 48000.0,
 ) -> StatefulProcessor:
@@ -852,6 +855,7 @@ def stateful_tremolo(
         t.init(sample_rate)
         t.set_freq(freq)
         t.set_depth(depth)
+        t.set_waveform(waveform)
         return t
 
     return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
@@ -859,7 +863,7 @@ def stateful_tremolo(
 
 def stateful_autowah(
     wah: float = 0.5,
-    dry_wet: float = 0.5,
+    dry_wet: float = 1.0,
     level: float = 0.5,
     channels: int = 1,
     sample_rate: float = 48000.0,
@@ -879,10 +883,10 @@ def stateful_autowah(
 
 
 def stateful_flanger(
-    lfo_freq: float = 0.3,
+    lfo_freq: float = 0.2,
     lfo_depth: float = 0.5,
-    delay_ms: float = 5.0,
-    feedback: float = 0.2,
+    feedback: float = 0.3,
+    delay_ms: float = 1.0,
     channels: int = 1,
     sample_rate: float = 48000.0,
 ) -> StatefulProcessor:
@@ -894,8 +898,8 @@ def stateful_flanger(
         f.init(sample_rate)
         f.set_lfo_freq(lfo_freq)
         f.set_lfo_depth(lfo_depth)
-        f.set_delay_ms(delay_ms)
         f.set_feedback(feedback)
+        f.set_delay_ms(delay_ms)
         return f
 
     return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)
@@ -904,8 +908,9 @@ def stateful_flanger(
 def stateful_phaser(
     lfo_freq: float = 0.3,
     lfo_depth: float = 0.5,
-    freq: float = 400.0,
-    feedback: float = 0.2,
+    freq: float = 1000.0,
+    feedback: float = 0.5,
+    poles: int = 4,
     channels: int = 1,
     sample_rate: float = 48000.0,
 ) -> StatefulProcessor:
@@ -919,6 +924,7 @@ def stateful_phaser(
         p.set_lfo_depth(lfo_depth)
         p.set_freq(freq)
         p.set_feedback(feedback)
+        p.set_poles(poles)
         return p
 
     return StatefulProcessor(factory, channels=channels, sample_rate=sample_rate)

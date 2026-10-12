@@ -7,6 +7,18 @@
 // Oscillators
 // ============================================================================
 
+// Comb and Allpass set their longest loop to max_size / sample_rate - 10 ms.
+// At or below 10 ms of buffer that is <= 0 and Process() divides by zero.
+static void check_loop_buffer(const char *who, float sample_rate, size_t max_size) {
+    if (!(sample_rate > 0.f))
+        throw std::invalid_argument(std::string(who) + ": sample_rate must be > 0");
+    if ((float)max_size <= 0.01f * sample_rate + 1.f)
+        throw std::invalid_argument(
+            std::string(who) + ": max_size must exceed 10 ms of samples ("
+            + std::to_string((size_t)(0.01f * sample_rate) + 1) + "), got "
+            + std::to_string(max_size));
+}
+
 static void bind_daisysp_oscillators(nb::module_ &m) {
     auto mod = m.def_submodule("oscillators", "DaisySP oscillator modules");
 
@@ -332,16 +344,18 @@ static void bind_daisysp_filters(nb::module_ &m) {
 
     // Allpass (needs external buffer -- managed internally)
     using AP = daisysp::Allpass;
-    nb::class_<AP>(mod, "Allpass", "Allpass filter (LGPL)")
-        .def("__init__", [](AP *self, float sample_rate, size_t max_size) {
-            new (self) AP();
-            auto *buf = new float[max_size]();
-            self->Init(sample_rate, buf, max_size);
+    using APB = WithBuffer<AP>;
+    nb::class_<APB>(mod, "Allpass", "Allpass filter (LGPL)")
+        .def("__init__", [](APB *self, float sample_rate, size_t max_size) {
+            check_loop_buffer("Allpass", sample_rate, max_size);
+            new (self) APB();
+            self->storage.reset(new float[max_size]());
+            self->Init(sample_rate, self->storage.get(), max_size);
         }, "sample_rate"_a, "max_size"_a = 4096)
-        .def("set_freq", &AP::SetFreq, "looptime"_a)
-        .def("set_rev_time", &AP::SetRevTime, "revtime"_a)
-        .def("process_sample", &AP::Process, "in"_a)
-        .def("process", [](AP &self, ArrayF input) {
+        .def("set_freq", fwd<APB>(&AP::SetFreq), "looptime"_a)
+        .def("set_rev_time", fwd<APB>(&AP::SetRevTime), "revtime"_a)
+        .def("process_sample", fwd<APB>(&AP::Process), "in"_a)
+        .def("process", [](APB &self, ArrayF input) {
             return util_process_mono(self, input);
         }, "input"_a);
 
@@ -371,17 +385,19 @@ static void bind_daisysp_filters(nb::module_ &m) {
 
     // Comb (needs external buffer)
     using CB = daisysp::Comb;
-    nb::class_<CB>(mod, "Comb", "Comb filter (LGPL)")
-        .def("__init__", [](CB *self, float sample_rate, size_t max_size) {
-            new (self) CB();
-            auto *buf = new float[max_size]();
-            self->Init(sample_rate, buf, max_size);
+    using CBB = WithBuffer<CB>;
+    nb::class_<CBB>(mod, "Comb", "Comb filter (LGPL)")
+        .def("__init__", [](CBB *self, float sample_rate, size_t max_size) {
+            check_loop_buffer("Comb", sample_rate, max_size);
+            new (self) CBB();
+            self->storage.reset(new float[max_size]());
+            self->Init(sample_rate, self->storage.get(), max_size);
         }, "sample_rate"_a, "max_size"_a = 4096)
-        .def("set_freq", &CB::SetFreq, "freq"_a)
-        .def("set_period", &CB::SetPeriod, "looptime"_a)
-        .def("set_rev_time", &CB::SetRevTime, "revtime"_a)
-        .def("process_sample", &CB::Process, "in"_a)
-        .def("process", [](CB &self, ArrayF input) {
+        .def("set_freq", fwd<CBB>(&CB::SetFreq), "freq"_a)
+        .def("set_period", fwd<CBB>(&CB::SetPeriod), "looptime"_a)
+        .def("set_rev_time", fwd<CBB>(&CB::SetRevTime), "revtime"_a)
+        .def("process_sample", fwd<CBB>(&CB::Process), "in"_a)
+        .def("process", [](CBB &self, ArrayF input) {
             return util_process_mono(self, input);
         }, "input"_a);
 
@@ -622,7 +638,10 @@ static void bind_daisysp_effects(nb::module_ &m) {
     using RV = daisysp::ReverbSc;
     nb::class_<RV>(mod, "ReverbSc", "Stereo reverb (LGPL)")
         .def(nb::init<>())
-        .def("init", &RV::Init, "sample_rate"_a)
+        .def("init", [](RV &self, float sr) {
+            if (!(sr > 0.f) || self.Init(sr) != 0)
+                throw std::invalid_argument("ReverbSc: sample_rate must be in (0, 192000], got " + std::to_string(sr));
+        }, "sample_rate"_a)
         .def("set_feedback", [](RV &self, float fb) { self.SetFeedback(fb); }, "feedback"_a)
         .def("set_lp_freq", [](RV &self, float f) { self.SetLpFreq(f); }, "freq"_a)
         .def("process_sample", [](RV &self, float in1, float in2) {
@@ -1111,22 +1130,39 @@ static void bind_daisysp_physical_modeling(nb::module_ &m) {
 
     // LGPL: Pluck (needs external buffer)
     using PL = daisysp::Pluck;
+    using PLB = WithBuffer<PL>;
     mod.attr("PLUCK_MODE_RECURSIVE") = (int)daisysp::PLUCK_MODE_RECURSIVE;
     mod.attr("PLUCK_MODE_WEIGHTED_AVERAGE") = (int)daisysp::PLUCK_MODE_WEIGHTED_AVERAGE;
 
-    nb::class_<PL>(mod, "Pluck", "Karplus-Strong plucked string (LGPL)")
-        .def("__init__", [](PL *self, float sample_rate, int npt, int mode) {
-            new (self) PL();
-            auto *buf = new float[npt]();
-            self->Init(sample_rate, buf, npt, mode);
+    nb::class_<PLB>(mod, "Pluck", "Karplus-Strong plucked string (LGPL)")
+        .def("__init__", [](PLB *self, float sample_rate, int npt, int mode) {
+            if (!(sample_rate > 0.f))
+                throw std::invalid_argument("Pluck: sample_rate must be > 0");
+            if (npt < 64)
+                throw std::invalid_argument("Pluck: npt must be >= 64, got " + std::to_string(npt));
+            new (self) PLB();
+            self->sample_rate = sample_rate;
+            // Process() reads and writes buf[npt], one past the table.
+            self->storage.reset(new float[(size_t)npt + 1]());
+            self->Init(sample_rate, self->storage.get(), npt, mode);
         }, "sample_rate"_a, "npt"_a = 256, "mode"_a = 0)
-        .def("set_amp", &PL::SetAmp, "amp"_a)
-        .def("set_freq", &PL::SetFreq, "freq"_a)
-        .def("set_decay", &PL::SetDecay, "decay"_a)
-        .def("set_damp", &PL::SetDamp, "damp"_a)
-        .def("set_mode", &PL::SetMode, "mode"_a)
-        .def("process_sample", [](PL &self, float trig) { return self.Process(trig); }, "trig"_a)
-        .def("process", [](PL &self, int n) {
+        .def("set_amp", fwd<PLB>(&PL::SetAmp), "amp"_a)
+        .def("set_freq", [](PLB &self, float freq) {
+            // At or above the sample rate the phase step skips past the table.
+            if (!(freq > 0.f && freq < self.sample_rate))
+                throw std::invalid_argument("Pluck: freq must be in (0, sample_rate), got " + std::to_string(freq));
+            self.SetFreq(freq);
+        }, "freq"_a)
+        .def("set_decay", [](PLB &self, float decay) {
+            // decay scales the active table length; outside [0, 1] it overruns it.
+            if (!(decay >= 0.f && decay <= 1.f))
+                throw std::invalid_argument("Pluck: decay must be in [0, 1], got " + std::to_string(decay));
+            self.SetDecay(decay);
+        }, "decay"_a)
+        .def("set_damp", fwd<PLB>(&PL::SetDamp), "damp"_a)
+        .def("set_mode", fwd<PLB>(&PL::SetMode), "mode"_a)
+        .def("process_sample", [](PLB &self, float trig) { return self.Process(trig); }, "trig"_a)
+        .def("process", [](PLB &self, int n) {
             // Pluck::Process takes a non-const float& trig, so it cannot use the
             // shared util_trigger_generate_mono helper (which passes bool literals).
             util_check_count(n);
@@ -1188,32 +1224,35 @@ static void bind_daisysp_utility(nb::module_ &m) {
 
     // Looper (needs external buffer)
     using LO = daisysp::Looper;
+    using LOB = WithBuffer<LO>;
     nb::enum_<LO::Mode>(mod, "LooperMode")
         .value("NORMAL", LO::Mode::NORMAL)
         .value("ONETIME_DUB", LO::Mode::ONETIME_DUB)
         .value("REPLACE", LO::Mode::REPLACE)
         .value("FRIPPERTRONICS", LO::Mode::FRIPPERTRONICS);
 
-    nb::class_<LO>(mod, "Looper", "Audio looper")
-        .def("__init__", [](LO *self, size_t size) {
-            new (self) LO();
-            auto *buf = new float[size]();
-            self->Init(buf, size);
+    nb::class_<LOB>(mod, "Looper", "Audio looper")
+        .def("__init__", [](LOB *self, size_t size) {
+            if (size == 0)
+                throw std::invalid_argument("Looper: size must be > 0");
+            new (self) LOB();
+            self->storage.reset(new float[size]());
+            self->Init(self->storage.get(), size);
         }, "size"_a = 48000)
-        .def("trig_record", &LO::TrigRecord)
-        .def("set_mode", &LO::SetMode, "mode"_a)
-        .def("get_mode", &LO::GetMode)
-        .def("set_reverse", &LO::SetReverse, "state"_a)
-        .def("toggle_reverse", &LO::ToggleReverse)
-        .def("get_reverse", &LO::GetReverse)
-        .def("set_half_speed", &LO::SetHalfSpeed, "state"_a)
-        .def("toggle_half_speed", &LO::ToggleHalfSpeed)
-        .def("get_half_speed", &LO::GetHalfSpeed)
-        .def("clear", &LO::Clear)
-        .def("recording", &LO::Recording)
-        .def("is_near_beginning", &LO::IsNearBeginning)
-        .def("process_sample", &LO::Process, "input"_a)
-        .def("process", [](LO &self, ArrayF input) {
+        .def("trig_record", fwd<LOB>(&LO::TrigRecord))
+        .def("set_mode", fwd<LOB>(&LO::SetMode), "mode"_a)
+        .def("get_mode", fwd<LOB>(&LO::GetMode))
+        .def("set_reverse", fwd<LOB>(&LO::SetReverse), "state"_a)
+        .def("toggle_reverse", fwd<LOB>(&LO::ToggleReverse))
+        .def("get_reverse", fwd<LOB>(&LO::GetReverse))
+        .def("set_half_speed", fwd<LOB>(&LO::SetHalfSpeed), "state"_a)
+        .def("toggle_half_speed", fwd<LOB>(&LO::ToggleHalfSpeed))
+        .def("get_half_speed", fwd<LOB>(&LO::GetHalfSpeed))
+        .def("clear", fwd<LOB>(&LO::Clear))
+        .def("recording", fwd<LOB>(&LO::Recording))
+        .def("is_near_beginning", fwd<LOB>(&LO::IsNearBeginning))
+        .def("process_sample", fwd<LOB>(&LO::Process), "input"_a)
+        .def("process", [](LOB &self, ArrayF input) {
             return util_process_mono(self, input);
         }, "input"_a);
 

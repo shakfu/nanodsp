@@ -19,7 +19,8 @@ class TestSTFTFunctions:
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
         spec = sp.stft(buf, window_size=1024)
         fft_size = fft.RealFFT.fast_size_above(1024)
-        expected_frames = (4096 - 1024) // 256 + 1
+        # One frame per hop: the end is padded so every sample gets full overlap.
+        expected_frames = -(-4096 // 256)
         assert spec.data.shape == (1, expected_frames, fft_size // 2)
         assert spec.data.dtype == np.complex64
 
@@ -31,7 +32,7 @@ class TestSTFTFunctions:
     def test_stft_custom_params(self):
         buf = AudioBuffer.noise(channels=1, frames=4096, sample_rate=48000.0, seed=0)
         spec = sp.stft(buf, window_size=512, hop_size=128)
-        expected_frames = (4096 - 512) // 128 + 1
+        expected_frames = -(-4096 // 128)
         assert spec.num_frames == expected_frames
         assert spec.hop_size == 128
         assert spec.window_size == 512

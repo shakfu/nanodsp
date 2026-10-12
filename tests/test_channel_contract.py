@@ -22,7 +22,8 @@ from nanodsp import AudioBuffer
 from nanodsp._cli import get_kinds, get_registry
 
 SR = 48000.0
-FRAMES = 4800
+# 0.5 s: long enough for the 400 ms loudness gate in normalize_lufs and master.
+FRAMES = 24000
 
 # Processors that intentionally widen mono to stereo. Each produces a stereo
 # field from a mono source, so there is no meaningful mono output.
@@ -56,6 +57,22 @@ CHANGES_FRAME_COUNT = {
 # Processors that deliberately change the sample rate.
 CHANGES_SAMPLE_RATE = {"upsample_2x"}
 
+# Channel counts each processor is documented to reject with ValueError. Any
+# other ValueError is a failure, not a skip: a processor that starts rejecting
+# everything must not drop out of the contract checks unnoticed.
+STEREO_ONLY = {"mid_side_decode", "mid_side_encode", "stereo_widen"}
+MONO_OR_STEREO = {
+    "gated_reverb",
+    "ping_pong_delay",
+    "reverb_sc",
+    "shimmer_reverb",
+    "stereo_delay",
+}
+REJECTS: dict[str, set[int]] = {
+    **{n: {1, 4} for n in STEREO_ONLY},
+    **{n: {4} for n in MONO_OR_STEREO},
+}
+
 
 def _signal(channels: int) -> AudioBuffer:
     t = np.arange(FRAMES, dtype=np.float64) / SR
@@ -88,13 +105,21 @@ PROCESSORS = _defaultable_processors()
 
 def _apply(name: str, buf: AudioBuffer):
     fn, _ = get_registry()[name]
+    expected_reject = buf.channels in REJECTS.get(name, set())
     try:
-        return fn(buf)
+        out = fn(buf)
     except ValueError:
-        # Some processors reject a channel count or a degenerate signal
-        # (mid_side_* need stereo, normalize_lufs needs >= 400 ms). Not a
-        # channel-contract violation.
-        pytest.skip(f"{name} rejects this input")
+        if expected_reject:
+            pytest.skip(f"{name} rejects {buf.channels}-channel input by design")
+        raise
+    assert not expected_reject, (
+        f"{name} accepted {buf.channels}-channel input; update REJECTS"
+    )
+    return out
+
+
+def test_rejections_name_real_processors():
+    assert set(REJECTS) <= set(PROCESSORS)
 
 
 def test_registry_has_processors():

@@ -149,14 +149,17 @@ def fm2(
     ratio : float
         Modulator/carrier frequency ratio, > 0. Integer ratios produce harmonic timbres.
     index : float
-        Modulation index, >= 0. Higher = more sidebands. Typical: 0--10.
+        Modulation index beta = peak deviation / modulator frequency, >= 0.
+        Higher = more sidebands. Typical: 0--10.
     """
     _check_frames(frames)
     fm = _dsy_osc.Fm2()
     fm.init(sample_rate)
     fm.set_frequency(freq)
     fm.set_ratio(ratio)
-    fm.set_index(index)
+    # DaisySP adds 0.2 * index carrier cycles per sample at full modulator
+    # swing, i.e. a peak deviation of 0.2 * index * sample_rate Hz.
+    fm.set_index(index * freq * ratio / (0.2 * sample_rate))
     data = fm.process(frames)
     return AudioBuffer(np.asarray(data).reshape(1, -1), sample_rate=sample_rate)
 

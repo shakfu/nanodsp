@@ -145,10 +145,11 @@ private:
 
     static constexpr float pi_ = 3.14159265358979f;
     static constexpr int KTABLE = 64;
-    static constexpr int TABLE_SIZE = 2048;
 
     // Precomputed minBLEP table at 64x oversampling
-    static constexpr float TABLE[2048] = {
+    // nanodsp local patch: was TABLE[2048] with 1424 initialisers, so the
+    // zero-filled tail added a +1.0 residual 23-30 samples after every edge.
+    static constexpr float TABLE[] = {
         -0.000000f, -0.000000f, -0.000000f, -0.000000f,
         -0.000000f,  0.000000f,  0.000000f,  0.000000f,
          0.000000f,  0.000000f,  0.000000f,  0.000000f,
@@ -506,6 +507,7 @@ private:
          1.000000f,  1.000000f,  1.000000f,  1.000000f,
          1.000000f,  1.000000f,  1.000000f,  1.000000f
     };
+    static constexpr int TABLE_SIZE = sizeof(TABLE) / sizeof(TABLE[0]);
 };
 
 // Out-of-line definition of static constexpr array (needed pre-C++17 inline)

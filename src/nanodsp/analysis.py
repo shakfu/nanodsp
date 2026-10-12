@@ -31,7 +31,7 @@ import numpy as np
 from nanodsp.buffer import AudioBuffer
 from nanodsp.spectral import stft
 from nanodsp._helpers import _squeeze_mono
-from nanodsp._core import filters, madronalib as _madronalib
+from nanodsp._core import madronalib as _madronalib, stk as _stk
 
 # Small constants to prevent log(0) and division-by-zero in numerical computations.
 # _LOG_EPS is intentionally tiny (1e-20) because it guards log10() in LUFS loudness
@@ -47,20 +47,41 @@ _DIV_EPS: float = 1e-10
 # ---------------------------------------------------------------------------
 
 
-def _k_weight(x: np.ndarray, sample_rate: float) -> np.ndarray:
-    """Apply two-stage K-weighting to a 1D signal via C++ Biquad.
+def _k_weight_coeffs(sample_rate: float) -> list[tuple[float, ...]]:
+    """BS.1770 K-weighting biquads ``(b0, b1, b2, a1, a2)`` at any sample rate.
 
-    Stage 1: high shelf ~+4 dB at 1681 Hz (head/ear acoustic model).
-    Stage 2: highpass at 38 Hz (revised low-frequency B-weighting).
+    Analog prototypes fitted to the 48 kHz coefficients in BS.1770-4,
+    re-derived per rate through the bilinear transform. At 48 kHz they
+    reproduce the published coefficients to double precision.
     """
-    freq_pre = 1681.0 / sample_rate
-    bq_pre = filters.Biquad()
-    bq_pre.high_shelf_db(freq_pre, 4.0)
-    stage1 = bq_pre.process(x)
-    freq_hp = 38.0 / sample_rate
-    bq_hp = filters.Biquad()
-    bq_hp.highpass(freq_hp)
-    return bq_hp.process(stage1)
+    # Stage 1: high shelf (acoustic effect of the head).
+    k = np.tan(np.pi * 1681.974450955533 / sample_rate)
+    q = 0.7071752369554196
+    vh = 10.0 ** (3.999843853973347 / 20.0)
+    vb = vh**0.4996667741545416
+    a0 = 1.0 + k / q + k * k
+    shelf = (
+        (vh + vb * k / q + k * k) / a0,
+        2.0 * (k * k - vh) / a0,
+        (vh - vb * k / q + k * k) / a0,
+        2.0 * (k * k - 1.0) / a0,
+        (1.0 - k / q + k * k) / a0,
+    )
+    # Stage 2: RLB highpass.
+    k = np.tan(np.pi * 38.13547087602444 / sample_rate)
+    q = 0.5003270373238773
+    a0 = 1.0 + k / q + k * k
+    hp = (1.0, -2.0, 1.0, 2.0 * (k * k - 1.0) / a0, (1.0 - k / q + k * k) / a0)
+    return [shelf, hp]
+
+
+def _k_weight(x: np.ndarray, sample_rate: float) -> np.ndarray:
+    """Apply BS.1770 K-weighting to a 1D signal."""
+    for b0, b1, b2, a1, a2 in _k_weight_coeffs(sample_rate):
+        bq = _stk.filters.BiQuad()
+        bq.set_coefficients(float(b0), float(b1), float(b2), float(a1), float(a2))
+        x = bq.process(np.ascontiguousarray(x, dtype=np.float32))
+    return x
 
 
 def loudness_lufs(buf: AudioBuffer) -> float:
@@ -442,7 +463,6 @@ def pitch_detect(
                 fft_size *= 2
             X = np.fft.rfft(frame, n=fft_size)
             acf = np.fft.irfft(X * np.conj(X), n=fft_size)[:max_tau]
-            r0 = acf[0]
 
             # Build shifted energy: sum(x[tau:W]^2)
             sq = frame**2
@@ -452,9 +472,11 @@ def pitch_detect(
             for tau in range(1, max_tau):
                 energy_shifted[tau] = cumsum_sq[W - 1] - cumsum_sq[tau - 1]
 
+            # d(tau) = sum_{j<W-tau} (x[j] - x[j+tau])^2
+            #        = sum(x[:W-tau]^2) + sum(x[tau:]^2) - 2 acf(tau)
             d = np.zeros(max_tau, dtype=np.float64)
             for tau in range(1, max_tau):
-                d[tau] = r0 + energy_shifted[tau] - 2.0 * acf[tau]
+                d[tau] = cumsum_sq[W - 1 - tau] + energy_shifted[tau] - 2.0 * acf[tau]
 
             # Cumulative mean normalization
             d_prime = np.ones(max_tau, dtype=np.float64)
@@ -776,7 +798,8 @@ def gcc_phat(
     -------
     tuple[float, np.ndarray]
         (delay_seconds, correlation) -- delay in seconds (positive means *buf*
-        is delayed relative to *ref*), and the full GCC-PHAT correlation array.
+        is delayed relative to *ref*), and the full GCC-PHAT correlation array
+        in :func:`nanodsp.ops.xcorr` order: lag 0 is at index ``len(ref) - 1``.
 
     References
     ----------
@@ -826,4 +849,5 @@ def gcc_phat(
         delay_samples = peak_idx - len(candidates)
 
     delay_seconds = float(delay_samples) / sr
-    return delay_seconds, corr[:n].astype(np.float32)
+    linear = np.concatenate([corr[fft_size - (len(b) - 1) :], corr[: len(a)]])
+    return delay_seconds, linear.astype(np.float32)

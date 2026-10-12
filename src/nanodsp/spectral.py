@@ -79,6 +79,10 @@ def stft(
     """
     if hop_size is None:
         hop_size = window_size // 4
+    if window_size < 1 or hop_size < 1:
+        raise ValueError(
+            f"window_size and hop_size must be >= 1, got {window_size} and {hop_size}"
+        )
 
     fft_size = fft.RealFFT.fast_size_above(window_size)
     rfft_obj = fft.RealFFT(fft_size)
@@ -92,12 +96,22 @@ def stft(
     win = win_fn(window_size).astype(np.float32)
 
     n_frames = buf.frames
-    num_stft_frames = max(0, (n_frames - window_size) // hop_size + 1)
+    # Pad the end so the final samples get full window overlap; without it
+    # istft dropped up to window_size samples. Reflection rather than zeros
+    # keeps the last frames free of the leakage a hard cut would add.
+    num_stft_frames = -(-n_frames // hop_size)
+    padded_len = (num_stft_frames - 1) * hop_size + window_size
 
     out = np.zeros((buf.channels, num_stft_frames, bins), dtype=np.complex64)
 
     for ch in range(buf.channels):
         channel_data = buf.ensure_1d(ch)
+        if padded_len > n_frames:
+            channel_data = np.pad(
+                channel_data,
+                (0, padded_len - n_frames),
+                mode="reflect" if n_frames > 1 else "constant",
+            )
         for t in range(num_stft_frames):
             start = t * hop_size
             segment = channel_data[start : start + window_size] * win
@@ -161,8 +175,10 @@ def istft(spec: Spectrogram, window: WindowType = "hann") -> AudioBuffer:
         start = t * hop_size
         win_sum[start : start + window_size] += win**2
 
-    # Avoid division by zero at edges
-    win_sum = np.maximum(win_sum, 1e-8)
+    # Floor relative to the overlap gain: where few windows overlap (the first
+    # samples, or a single frame) an absolute floor amplified modified spectra
+    # by up to 1e8. Those samples are tapered instead.
+    win_sum = np.maximum(win_sum, 1e-3 * float(win_sum.max(initial=0.0)) + 1e-12)
     out /= win_sum[np.newaxis, :]
 
     # Trim to original length
@@ -485,10 +501,12 @@ def time_stretch(spec: Spectrogram, rate: float) -> Spectrogram:
 
 
 def phase_lock(spec: Spectrogram) -> Spectrogram:
-    """Identity phase-locking (Laroche & Dolson 1999).
+    """Phase-lock each bin to its nearest spectral peak (after Laroche & Dolson 1999).
 
-    Finds spectral peaks in each frame and propagates their phase to
-    neighboring bins, reducing phasiness.
+    Finds spectral peaks in each frame and sets every other bin's phase to
+    its peak's phase plus the offset a stationary sinusoid would have, which
+    reduces phasiness after phase-vocoder processing. Without the analysis
+    phases this is the rigid form, not the identity form of the paper.
 
     Parameters
     ----------
@@ -501,7 +519,6 @@ def phase_lock(spec: Spectrogram) -> Spectrogram:
         Phase-locked spectrogram with identical magnitudes.
     """
     n_ch, n_frames, n_bins = spec.data.shape
-    hop = spec.hop_size
     fft_size = spec.fft_size
 
     input_mag = np.abs(spec.data)
@@ -509,7 +526,7 @@ def phase_lock(spec: Spectrogram) -> Spectrogram:
     out_phase = input_phase.copy()
 
     all_bins = np.arange(n_bins)
-    phase_scale = 2.0 * np.pi * hop / fft_size
+    phase_scale = np.pi * (spec.window_size - 1) / fft_size
 
     for ch in range(n_ch):
         for t in range(n_frames):
@@ -538,11 +555,11 @@ def phase_lock(spec: Spectrogram) -> Spectrogram:
             use_left = np.abs(all_bins - left_candidate) < np.abs(all_bins - nearest)
             nearest = np.where(use_left, left_candidate, nearest)
 
-            # Vectorized phase propagation
+            # Each bin takes its peak's phase plus the offset a stationary
+            # sinusoid has between those bins: the window is centred at sample
+            # (W - 1) / 2, a linear phase of -2*pi*k*(W - 1)/(2N) per bin.
             offset = all_bins - nearest
-            out_phase[ch, t, :] = input_phase[ch, t, nearest] + offset * (
-                phase_scale * nearest
-            )
+            out_phase[ch, t, :] = input_phase[ch, t, nearest] - offset * phase_scale
 
     out_data = (input_mag * np.exp(1j * out_phase)).astype(np.complex64)
     return Spectrogram(

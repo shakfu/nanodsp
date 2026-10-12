@@ -94,7 +94,7 @@ def _parse_riff(data: bytes, source: str = "<bytes>") -> tuple[dict, bytes]:
                 "tag": tag,
                 "channels": channels,
                 "sample_rate": rate,
-                "bits": bits,
+                "bits": _container_bits(tag, channels, _align, bits),
             }
         elif chunk_id == b"data":
             sample_bytes = data[body:end]
@@ -108,6 +108,21 @@ def _parse_riff(data: bytes, source: str = "<bytes>") -> tuple[dict, bytes]:
     if fmt["channels"] < 1:
         raise ValueError(f"Invalid channel count {fmt['channels']} in {source}")
     return fmt, sample_bytes
+
+
+def _container_bits(tag: int, channels: int, block_align: int, bits: int) -> int:
+    """PCM container width in bits; ``bits`` understates it for e.g. 12- or 20-bit audio.
+
+    Valid bits are left-justified in the container, so decoding at the
+    container width gives the correct scale.
+    """
+    if tag != _WAVE_FORMAT_PCM:
+        return bits
+    if channels > 0 and block_align % channels == 0:
+        width = block_align // channels
+        if width * 8 >= bits:
+            return width * 8
+    return -(-bits // 8) * 8
 
 
 def _decode_wav_bytes(raw: bytes, source: str = "<bytes>") -> AudioBuffer:
@@ -128,7 +143,7 @@ def _decode_wav_bytes(raw: bytes, source: str = "<bytes>") -> AudioBuffer:
         sampwidth = bits // 8
         n_frames = len(sample_bytes) // (sampwidth * channels) if sampwidth else 0
         return _decode_wav_frames(
-            sample_bytes,
+            sample_bytes[: n_frames * sampwidth * channels],
             sampwidth,
             channels,
             n_frames,
@@ -520,7 +535,7 @@ def _find_data_chunk(fh, source: str) -> tuple[dict, int, int]:
                 "tag": tag,
                 "channels": channels,
                 "sample_rate": rate,
-                "bits": bits,
+                "bits": _container_bits(tag, channels, _align, bits),
             }
         elif chunk_id == b"data":
             if fmt is None:
@@ -621,9 +636,14 @@ def _decode_samples(raw: bytes, fmt: dict, source: str) -> AudioBuffer:
         )
     if tag == _WAVE_FORMAT_PCM:
         sampwidth = bits // 8
-        n_frames = len(raw) // (sampwidth * channels)
+        n_frames = len(raw) // (sampwidth * channels) if sampwidth else 0
         return _decode_wav_frames(
-            raw, sampwidth, channels, n_frames, fmt["sample_rate"], source=source
+            raw[: n_frames * sampwidth * channels],
+            sampwidth,
+            channels,
+            n_frames,
+            fmt["sample_rate"],
+            source=source,
         )
     name = _FORMAT_NAMES.get(tag, f"0x{tag:04X}")
     raise ValueError(f"Unsupported WAV encoding: {name} in {source}")

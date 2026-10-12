@@ -36,12 +36,11 @@ public:
     // ---- Parameters ----
 
     void set_delay_ms(float ms) {
-        delay_ms_ = std::max(0.0f, ms);
-        float d = sr_ * delay_ms_ * 0.001f;
+        delay_ms_ = std::max(0.0f, ms);  // also maps NaN to 0
+        // Clamp before the int cast: casting a float >= 2^31 is UB.
+        float d = std::min(sr_ * delay_ms_ * 0.001f, (float)std::max(buf_size_ - 2, 0));
         delay_int_ = (int)d;
         delay_frac_ = d - (float)delay_int_;
-        if (delay_int_ >= buf_size_ - 1)
-            delay_int_ = buf_size_ - 2;
     }
     float get_delay_ms() const { return delay_ms_; }
 
@@ -55,6 +54,7 @@ public:
 
     // Process one stereo sample pair.  Returns (left, right).
     std::pair<float, float> tick(float in_l, float in_r) {
+        if (buf_size_ == 0) return {in_l, in_r};  // init() not called
         // Read from delay lines with linear interpolation
         float del_l = read_interp(buf_l_, write_l_);
         float del_r = read_interp(buf_r_, write_r_);

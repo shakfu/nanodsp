@@ -131,8 +131,8 @@ def paulstretch(
         If ``stretch`` is not positive, ``window_size`` is too small, or
         ``tonal_vs_noise`` is outside ``[-1, 1]``.
     """
-    if stretch <= 0:
-        raise ValueError(f"stretch must be positive, got {stretch}")
+    if not 0 < stretch < float("inf"):
+        raise ValueError(f"stretch must be positive and finite, got {stretch}")
     if window_size < 16:
         raise ValueError(f"window_size must be >= 16, got {window_size}")
     if not -1.0 <= tonal_vs_noise <= 1.0:
@@ -217,8 +217,8 @@ def signalsmith_stretch(
     ValueError
         If ``stretch`` is not positive.
     """
-    if stretch <= 0:
-        raise ValueError(f"stretch must be positive, got {stretch}")
+    if not 0 < stretch < float("inf"):
+        raise ValueError(f"stretch must be positive and finite, got {stretch}")
 
     proc = _ss.SignalsmithStretch(
         int(buf.channels), float(buf.sample_rate), bool(cheaper), int(seed)
@@ -359,8 +359,8 @@ def keyframe_stretch(
     >>> timestretch.keyframe_stretch(buf, semitones=7.0).frames
     48000
     """
-    if stretch <= 0:
-        raise ValueError(f"stretch must be positive, got {stretch}")
+    if not 0 < stretch < float("inf"):
+        raise ValueError(f"stretch must be positive and finite, got {stretch}")
     if splice_keyframes < 1:
         raise ValueError(f"splice_keyframes must be >= 1, got {splice_keyframes}")
     if threshold < 0:

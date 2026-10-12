@@ -705,8 +705,8 @@ class TestXcorr:
     def test_autocorrelation_peak_at_zero(self):
         buf = AudioBuffer.sine(440.0, frames=1024, sample_rate=48000.0)
         corr = ops.xcorr(buf)
-        # Peak of autocorrelation should be at lag 0
-        assert np.argmax(corr) == 0
+        # Lag 0 sits at index len - 1, as in np.correlate(..., "full")
+        assert np.argmax(corr) == buf.frames - 1
 
     def test_autocorrelation_symmetric(self):
         buf = AudioBuffer.noise(channels=1, frames=512, sample_rate=48000.0, seed=42)
@@ -727,7 +727,15 @@ class TestXcorr:
         buf_a = AudioBuffer(data_a, sample_rate=48000.0)
         buf_b = AudioBuffer(data_b, sample_rate=48000.0)
         corr = ops.xcorr(buf_a, buf_b)
-        assert np.argmax(corr) == delay
+        assert np.argmax(corr) == delay + n - 1
+
+    def test_matches_numpy_correlate(self):
+        rng = np.random.default_rng(0)
+        a = rng.standard_normal(300).astype(np.float32)
+        b = rng.standard_normal(170).astype(np.float32)
+        corr = ops.xcorr(AudioBuffer(a[None]), AudioBuffer(b[None]))
+        expected = np.correlate(a.astype(np.float64), b.astype(np.float64), "full")
+        np.testing.assert_allclose(corr, expected, atol=1e-4)
 
     def test_output_dtype(self):
         buf = AudioBuffer.noise(channels=1, frames=128, sample_rate=48000.0, seed=0)

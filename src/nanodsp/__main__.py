@@ -142,7 +142,7 @@ def cmd_info(args: argparse.Namespace) -> None:
     }
 
     if args.json:
-        print(json.dumps(info, indent=2))
+        print(_json_dumps(info, indent=2))
     else:
         for k, v in info.items():
             print(f"  {k}: {v}")
@@ -349,6 +349,22 @@ def _resolve_output_path(
     sys.exit(1)
 
 
+def _finite_or_none(obj: Any) -> Any:
+    """Replace non-finite floats with None, recursively."""
+    if isinstance(obj, float):
+        return obj if np.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _finite_or_none(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_finite_or_none(v) for v in obj]
+    return obj
+
+
+def _json_dumps(obj: Any, **kwargs: Any) -> str:
+    """``json.dumps`` that emits ``null`` for -inf/NaN, which strict JSON forbids."""
+    return json.dumps(_finite_or_none(obj), allow_nan=False, **kwargs)
+
+
 def _peak_db(buf: AudioBuffer) -> float:
     """Sample peak in dBFS, or -inf for digital silence."""
     peak = float(np.max(np.abs(buf.data))) if buf.frames else 0.0
@@ -533,10 +549,10 @@ def cmd_process(args: argparse.Namespace) -> None:
     targets = [
         (p, _resolve_output_path(p, args.output, args.output_dir)) for p in inputs
     ]
+    stream = getattr(args, "stream", False)
+    _check_output_collisions(targets, stream)
 
-    runner = (
-        _process_file_streaming if getattr(args, "stream", False) else _process_file
-    )
+    runner = _process_file_streaming if stream else _process_file
 
     if jobs <= 1:
         failures = 0
@@ -553,6 +569,36 @@ def cmd_process(args: argparse.Namespace) -> None:
         return
 
     _run_parallel(targets, steps, bit_depth, jobs, args, runner)
+
+
+def _check_output_collisions(targets: list[tuple[str, str]], stream: bool) -> None:
+    """Exit before processing if any output would overwrite an input or another output.
+
+    Whole-file mode reads its input before writing, so writing over the same
+    file is allowed there. ``--stream`` reads lazily and would truncate it.
+    """
+    inputs = {os.path.realpath(p): p for p, _ in targets}
+    seen: dict[str, str] = {}
+    for in_path, out_path in targets:
+        out_real = os.path.realpath(out_path)
+        if out_real in seen:
+            print(
+                f"Output {out_path} would be written for both {seen[out_real]} "
+                f"and {in_path}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        seen[out_real] = in_path
+        clash = inputs.get(out_real)
+        own = out_real == os.path.realpath(in_path)
+        if clash is not None and (stream or not own):
+            reason = (
+                "--stream cannot write over its own input"
+                if own
+                else f"it would overwrite input {clash}"
+            )
+            print(f"Refusing to write {out_path}: {reason}", file=sys.stderr)
+            sys.exit(1)
 
 
 def _resolve_jobs(jobs: int | None) -> int:
@@ -650,15 +696,15 @@ def cmd_analyze(args: argparse.Namespace) -> None:
 
     if args.json:
         if isinstance(result, np.ndarray):
-            print(json.dumps(result.tolist()))
+            print(_json_dumps(result.tolist()))
         elif isinstance(result, tuple):
             print(
-                json.dumps(
+                _json_dumps(
                     [r.tolist() if isinstance(r, np.ndarray) else r for r in result]
                 )
             )
         else:
-            print(json.dumps(result))
+            print(_json_dumps(result))
     else:
         if isinstance(result, tuple):
             for i, r in enumerate(result):
@@ -757,7 +803,7 @@ def _analyze_info(buf: AudioBuffer, args: argparse.Namespace) -> None:
         pass
 
     if args.json:
-        print(json.dumps(info, indent=2))
+        print(_json_dumps(info, indent=2))
     else:
         for k, v in info.items():
             print(f"  {k}: {v}")
@@ -1107,7 +1153,7 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
             "time_std_ms": t_std * 1000,
             "throughput_x": round(throughput, 1),
         }
-        print(json.dumps(result, indent=2))
+        print(_json_dumps(result, indent=2))
     else:
         print(f"\n  Function: {fn_label}")
         print(

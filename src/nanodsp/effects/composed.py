@@ -281,19 +281,30 @@ def multiband_compress(
     # Sort crossover freqs
     freqs = sorted(crossover_freqs)
 
-    # Split into bands using Linkwitz-Riley (cascaded biquad LP/HP)
+    # 4th-order Linkwitz-Riley split: LP and HP sum to an allpass, so the
+    # bands recombine flat. A single Butterworth pair nulls at the crossover.
+    def lr4_low(x: AudioBuffer, f: float) -> AudioBuffer:
+        return lowpass(lowpass(x, f), f)
+
+    def lr4_high(x: AudioBuffer, f: float) -> AudioBuffer:
+        return highpass(highpass(x, f), f)
+
     bands = []
     remainder = buf
-
-    for i, freq in enumerate(freqs):
-        # Extract low portion
-        band_low = lowpass(remainder, freq)
-        bands.append(band_low)
-        # Remainder is the high portion
-        remainder = highpass(remainder, freq)
-
-    # Last band is whatever remains above the highest crossover
+    for freq in freqs:
+        bands.append(lr4_low(remainder, freq))
+        remainder = lr4_high(remainder, freq)
     bands.append(remainder)
+
+    # Each lower band skipped the later crossovers; pass it through their
+    # allpass so all bands share one phase response before summing.
+    for i in range(len(freqs) - 1):
+        for freq in freqs[i + 1 :]:
+            b = bands[i]
+            bands[i] = AudioBuffer(
+                lr4_low(b, freq).data + lr4_high(b, freq).data,
+                sample_rate=b.sample_rate,
+            )
 
     # Compress each band
     compressed_bands = []
@@ -491,6 +502,8 @@ def master(
     """Simple mastering chain.
 
     Chain order: dc_block -> EQ -> compress -> limit -> normalize_lufs.
+    The sample peak never exceeds 1.0: when ``target_lufs`` would need more,
+    the output is scaled down and lands below the target.
 
     Parameters
     ----------
@@ -546,12 +559,21 @@ def master(
     if compress_on:
         result = compress(result, ratio=3.0, threshold=-18.0, attack=0.01, release=0.1)
 
-    # Limit
     if limit_on:
         result = limit(result, pre_gain=1.0)
 
-    # Normalize
     result = normalize_lufs(result, target_lufs=target_lufs)
+
+    # Normalisation can push peaks past the limiter's ceiling. Scaling down
+    # keeps the output within full scale at the cost of the loudness target.
+    peak = float(np.max(np.abs(result.data), initial=0.0))
+    if peak > 1.0:
+        result = AudioBuffer(
+            result.data / peak,
+            sample_rate=result.sample_rate,
+            channel_layout=result.channel_layout,
+            label=result.label,
+        )
 
     return result
 
@@ -669,7 +691,7 @@ def ping_pong_delay(
     buf : AudioBuffer
         Input audio (mono or stereo).
     delay_ms : float
-        Delay time in milliseconds (same for both channels).
+        Delay time in milliseconds (same for both channels), 0--60000.
     feedback : float
         Feedback amount (-0.99 to 0.99). Negative values invert phase.
     mix : float
@@ -684,8 +706,11 @@ def ping_pong_delay(
         raise ValueError(
             f"ping_pong_delay requires mono or stereo input, got {buf.channels} channels"
         )
+    if not 0 <= delay_ms <= 60_000:
+        raise ValueError(f"delay_ms must be in [0, 60000], got {delay_ms}")
     ppd = _fxdsp.PingPongDelay()
-    ppd.init(float(buf.sample_rate))
+    # The default 2 s line silently clamped longer delays.
+    ppd.init(float(buf.sample_rate), max(2000.0, float(delay_ms) + 1.0))
     ppd.delay_ms = delay_ms
     ppd.feedback = feedback
     ppd.mix = mix

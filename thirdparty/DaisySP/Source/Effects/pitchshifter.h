@@ -168,18 +168,16 @@ class PitchShifter
         if(transpose_ != transpose || force_recalc_)
         {
             transpose_ = transpose;
-            idx        = (uint8_t)fabsf(transpose);
-            ratio      = semitone_ratios_[idx % 12];
-            ratio *= (uint8_t)(fabsf(transpose) / 12) + 1;
-            if(transpose > 0.0f)
-            {
-                shift_up_ = true;
-            }
-            else
-            {
-                shift_up_ = false;
-            }
-            mod_freq_ = ((ratio - 1.0f) * sr_) / del_size_;
+            // nanodsp local patch: upstream truncated transpose to uint8_t,
+            // multiplied octaves (x2, x3) instead of exponentiating, and used
+            // the upward ramp rate for downward shifts, giving 2 - 2^(s/12).
+            // The read tap slides by `rate` samples per sample, so the pitch
+            // ratio is 1 + rate up and 1 - rate down.
+            (void)idx;
+            ratio     = powf(2.0f, fabsf(transpose) / 12.0f);
+            shift_up_ = transpose > 0.0f;
+            float rate = shift_up_ ? ratio - 1.0f : 1.0f - 1.0f / ratio;
+            mod_freq_  = (rate * sr_) / (del_size_ > 1 ? del_size_ - 1 : 1);
             if(mod_freq_ < 0.0f)
             {
                 mod_freq_ = 0.0f;

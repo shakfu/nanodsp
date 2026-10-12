@@ -67,6 +67,14 @@ def _silence(channels: int = 1) -> AudioBuffer:
     )
 
 
+# Processors that need stereo input; they are swept with stereo only.
+STEREO_ONLY = {"mid_side_decode", "mid_side_encode", "stereo_widen"}
+
+# Processors that cannot process silence: loudness normalisation has no gain
+# that reaches a target from -inf LUFS.
+REJECTS_SILENCE = {"master", "normalize_lufs"}
+
+
 def _callable_with_defaults(fn, skip_first: bool) -> bool:
     """True when *fn* needs nothing beyond its leading argument."""
     params = list(inspect.signature(fn).parameters.values())
@@ -103,14 +111,10 @@ def test_sweep_covers_the_registry():
 @pytest.mark.parametrize("name", PROCESSORS)
 @pytest.mark.parametrize("channels", [1, 2])
 def test_processor_output_is_finite_and_bounded(name: str, channels: int):
+    if channels == 1 and name in STEREO_ONLY:
+        pytest.skip(f"{name} requires stereo input")
     fn, _ = get_registry()[name]
-    buf = _mono() if channels == 1 else _stereo()
-    try:
-        out = fn(buf)
-    except ValueError:
-        # Declining an input (mono-only, stereo-only, too short) is a contract
-        # decision tested elsewhere; it is not a magnitude failure.
-        pytest.skip(f"{name} rejects {channels}-channel input")
+    out = fn(_mono() if channels == 1 else _stereo())
 
     data = out.data
     assert np.isfinite(data).all(), (
@@ -132,10 +136,12 @@ def test_processor_maps_silence_to_silence(name: str):
     faults that a signal-carrying input can mask.
     """
     fn, _ = get_registry()[name]
-    try:
-        out = fn(_silence())
-    except ValueError:
-        pytest.skip(f"{name} rejects silent input")
+    silence = _silence(2 if name in STEREO_ONLY else 1)
+    if name in REJECTS_SILENCE:
+        with pytest.raises(ValueError):
+            fn(silence)
+        return
+    out = fn(silence)
 
     data = out.data
     assert np.isfinite(data).all(), f"{name} produced non-finite output from silence"

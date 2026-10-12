@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <limits>
+#include <memory>
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -104,6 +105,25 @@ inline NpF1 util_trigger_generate_mono(T &self, int n) {
       }
     }
     return make_f1(out, (size_t)n);
+}
+
+// A vendored type that is handed a buffer in Init() and never frees it.
+// Owning the buffer here ties its lifetime to the Python object.
+template <typename T>
+struct WithBuffer : T {
+    std::unique_ptr<float[]> storage;
+    float sample_rate = 0.f;
+};
+
+// Bind a base-class member function on a derived bound type. nanobind looks
+// up `self` by the member pointer's class, which is not registered.
+template <typename D, typename B, typename R, typename... A>
+auto fwd(R (B::*f)(A...)) {
+    return [f](D &d, A... a) -> R { return (d.*f)(a...); };
+}
+template <typename D, typename B, typename R, typename... A>
+auto fwd(R (B::*f)(A...) const) {
+    return [f](const D &d, A... a) -> R { return (d.*f)(a...); };
 }
 
 // Library binding entry points

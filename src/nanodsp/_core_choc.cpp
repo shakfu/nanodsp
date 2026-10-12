@@ -29,9 +29,13 @@ void bind_choc(nb::module_ &m) {
         }
 
         float *out = new float[(size_t)numChannels * numFrames];
+        bool complete = true;
         { nb::gil_scoped_release rel;
           auto buffer = reader->readEntireStream<float>();
-          for (uint32_t ch = 0; ch < numChannels; ++ch) {
+          // readEntireStream returns an empty buffer when decoding fails.
+          complete = buffer.getNumChannels() == numChannels
+                     && buffer.getNumFrames() == numFrames;
+          for (uint32_t ch = 0; complete && ch < numChannels; ++ch) {
               auto iter = buffer.getIterator(ch);
               float *dst = out + (size_t)ch * numFrames;
               for (uint32_t f = 0; f < numFrames; ++f) {
@@ -39,6 +43,10 @@ void bind_choc(nb::module_ &m) {
                   ++iter;
               }
           }
+        }
+        if (!complete) {
+            delete[] out;
+            throw std::runtime_error("Truncated or corrupt FLAC file: " + path);
         }
 
         return nb::make_tuple(make_f2(out, numChannels, numFrames), sampleRate);

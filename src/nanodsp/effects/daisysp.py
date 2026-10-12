@@ -278,7 +278,7 @@ def phaser(
 def pitch_shift(
     buf: AudioBuffer,
     semitones: float = 0.0,
-    del_size: int = 256,
+    del_size: int = 2048,
     fun: float = 0.0,
 ) -> AudioBuffer:
     """Apply pitch shifting per channel.
@@ -288,9 +288,12 @@ def pitch_shift(
     buf : AudioBuffer
         Input audio.
     semitones : float
-        Pitch shift in semitones.
+        Pitch shift in semitones; fractional values are honoured.
     del_size : int
-        Internal delay buffer size.
+        Delay window in samples, 2--16384. The output lags the input by about
+        ``del_size / 2`` samples. Below ~2048 the pitch drifts audibly and
+        amplitude modulation at ``|ratio - 1| * sample_rate / del_size`` Hz
+        becomes audible.
     fun : float
         Fun parameter (spectral smearing), 0.0--1.0.
 
@@ -299,6 +302,9 @@ def pitch_shift(
     AudioBuffer
         Pitch-shifted audio.
     """
+
+    if not 2 <= del_size <= 16384:
+        raise ValueError(f"del_size must be in [2, 16384], got {del_size}")
 
     def _process(x):
         ps = _dsy_fx.PitchShifter()

@@ -4,6 +4,57 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Fixes from the third project review; findings and status are in `REVIEW.md`. Outputs change for `fm2`, `minblep`, `multiband_compress`, `master`, `daisysp.pitch_shift`, loudness, YIN, `xcorr`, `phase_lock` and every STFT-based function. Linux golden fingerprints are regenerated; the `darwin-arm64` block needs `python tests/test_golden.py --update` on a Mac.
+
+### Changed
+
+- **`fm2` `index` is now the classical modulation index** (peak deviation / modulator frequency), as the docstring already claimed. It used to scale DaisySP's raw 0.2-cycles-per-sample unit, so `index=1` meant a 9.6 kHz deviation at 48 kHz.
+
+- **`daisysp.pitch_shift` defaults to `del_size=2048`** (was 256). At 256 the measured pitch was off by up to 13 semitones; 2048 holds every shift from -12 to +24 within 22 cents. Latency is about `del_size / 2`.
+
+- **`stft` pads the end of the signal by reflection to `ceil(frames / hop)` frames.** It used to drop samples past the last full window, so `istft` returned fewer frames than its input, `eq_match` on input shorter than one window returned zeros, and `pitch_shift_spectral(+12)` played 859.5 Hz instead of 880. Analysis functions gain the corresponding trailing frames.
+
+- **`xcorr` and `gcc_phat` return the correlation in `np.correlate(a, b, "full")` order**, as documented; lag 0 is at index `len_b - 1`. They returned the circular layout.
+
+### Fixed
+
+- **Crashes from the public API.**
+  - `reverb_sc` overflowed its delay buffer above 48 kHz (segfault at 88.2 kHz).
+  - Truncated FLAC segfaulted in the binding, and empty, truncated or unknown-length FLAC hung `io.read` forever. Patches are recorded in `thirdparty/VERSIONS.md`.
+  - `pluck` (`decay` outside [0, 1], or `freq` at or above the sample rate), `comb_filter`/`Comb`/`Allpass` (`max_size` under 10 ms), `box_filter`/`box_stack_filter`/`peak_hold`/`peak_decay` (length below 1), `upsample_2x`/`oversample_roundtrip` (input longer than `max_block`), and `ping_pong_delay` (`delay_ms` of about 1e9 or inf) now raise `ValueError` instead.
+  - Pluck also wrote one float past its table at `decay=1`.
+  - `paulstretch(stretch=inf)` hung with the GIL released, so Ctrl-C could not stop it. All three stretchers now reject a non-finite `stretch`.
+
+- **`Pluck`, `Comb`, `Allpass` and `Looper` leaked their delay buffers.** Each call to `comb_filter` leaked `max_size * 4` bytes per channel.
+
+- **`nanodsp process --stream` truncated the input when writing over it**, then reported success. `process` now refuses any output that would overwrite an input in `--stream` mode, overwrite a different input, or be written twice in one batch (`-O` with two inputs sharing a basename).
+
+- **`fm2` played 100 Hz at its default 440 Hz.**
+
+- **`minblep` added a +1.0 residual after every edge.** Its table declared 2048 entries but supplied 1424.
+
+- **`multiband_compress` notched each crossover by 13-26 dB at unity ratio.** The comment said Linkwitz-Riley but the code summed a single Butterworth pair; it is now LR4 with allpass compensation of the lower bands.
+
+- **YIN (`pitch_detect`) used whole-frame energy in its difference function.** A 55 Hz tone was unvoiced in every frame.
+
+- **`loudness_lufs` used an approximate K-weighting.** It now uses the BS.1770 filters, which match the published 48 kHz coefficients to double precision; a full-scale 997 Hz sine read -3.24 LUFS and now reads -3.01. `normalize_lufs` and `master` inherit the fix.
+
+- **`master` output peaked at up to +8.4 dBFS.** Loudness normalisation ran after the limiter. The output is now scaled to a 1.0 sample peak where the target would exceed it.
+
+- **`phase_lock` destroyed an unmodified spectrogram** (7 dB SNR). It now applies the relative phase a stationary sinusoid has between bins, which gives about 40 dB SNR.
+
+- **`daisysp.pitch_shift` played the wrong pitch for downward, multi-octave and fractional shifts.** -7 semitones played 221 Hz from 440 instead of 294.
+
+- **Seven `--stream` constructors drifted from their whole-file forms.** They differed in parameter names (`cutoff_hz` vs `freq_hz`), missing parameters (`drive`, `waveform`, `poles`) or defaults (`flanger`, `phaser`, `autowah`). In the last case `--stream` produced different audio with no error.
+
+- **WAV PCM whose bit depth is not a multiple of 8 decoded as noise.** The container width now comes from `block_align`. A PCM file truncated mid-frame is salvaged rather than rejected.
+
+- **`analyze --json` and `info --json` emitted `-Infinity` for silence**, which is not JSON. Non-finite values are now `null`.
+
+- **The registry sweeps in `test_default_output.py` and `test_channel_contract.py` turned any `ValueError` into a skip**, so a processor that began rejecting all input was never checked. Rejections are now an explicit allow-list. `master` and `normalize_lufs` are contract-checked for the first time.
+
 ## [0.3.0]
 
 Correctness work dominates this release, most of it from a second full project review. Two defects fired on the default arguments of public functions: `daisysp.pitch_shift` returned an all-NaN buffer, and `daisysp.bitcrush` returned audio at roughly 126 times full scale with an inverted sign. Both were covered by passing tests that asserted only on shape, which is the gap `tests/test_default_output.py` now closes across the registry.

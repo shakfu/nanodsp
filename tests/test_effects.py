@@ -238,7 +238,8 @@ class TestDaisySPEffects:
         on allocator history and binary layout. tests/GOLDEN.json pins the
         numeric output, which does not.
         """
-        buf = self._sine()
+        # Long enough that the del_size / 2 latency (1024 samples) is small.
+        buf = self._sine(frames=16384)
         result = daisysp.pitch_shift(buf)
         assert np.isfinite(result.data).all()
         # At unison the shifter is a fixed delay at unity gain, so the output

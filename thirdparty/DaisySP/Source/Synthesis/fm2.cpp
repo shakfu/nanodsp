@@ -13,6 +13,11 @@ void Fm2::Init(float samplerate)
     lratio_ = 2.f;
     SetFrequency(lfreq_);
     SetRatio(lratio_);
+    // nanodsp local patch: Process() only retunes on a change from lfreq_ /
+    // lratio_, so without this the default 440 Hz / 2 left the carrier at the
+    // Oscillator default of 100 Hz.
+    car_.SetFreq(lfreq_);
+    mod_.SetFreq(lfreq_ * lratio_);
 
     car_.SetAmp(1.f);
     mod_.SetAmp(1.f);

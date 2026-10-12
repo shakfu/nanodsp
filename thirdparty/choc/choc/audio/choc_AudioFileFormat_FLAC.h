@@ -17620,18 +17620,25 @@ struct FLACAudioFileFormat<supportWriting>::Implementation
 
             auto& s = *static_cast<FLACReader*> (context)->stream;
 
+            // nanodsp local patch: upstream returned CONTINUE with the bytes it
+            // was asked for at EOF, then clear() made eofCallback report false,
+            // so libFLAC retried forever on truncated or unknown-length files.
             try
             {
                 s.read (reinterpret_cast<char*> (dest), static_cast<std::streamsize> (*bytes));
-                return flac::FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
             }
             catch (...) {}
 
             if (s.eof())
             {
-                s.clear();
                 *bytes = (size_t) s.gcount();
+                s.clear();
+                return *bytes == 0 ? flac::FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM
+                                   : flac::FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
             }
+
+            if (s.fail())
+                return flac::FLAC__STREAM_DECODER_READ_STATUS_ABORT;
 
             return flac::FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
         }
