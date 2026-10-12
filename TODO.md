@@ -21,7 +21,7 @@
 
 ### Known issues
 
-- [ ] **`tests/GOLDEN.json` darwin-arm64 block is stale for 17 cases.** The 0.3.x review fixes changed the output of `fm2`, `multiband_compress`, `master`, `daisysp.pitch_shift`, loudness, `onset_detect` and every STFT-based case. Only the Linux block was regenerated, so macOS CI fails on those cases until `python tests/test_golden.py --update` runs on a Mac.
+- [ ] **`tests/GOLDEN.json` darwin-arm64 block is stale for 16 cases.** The 0.4.0 fixes changed the output of `fm2`, `multiband_compress`, `master`, `daisysp.pitch_shift`, loudness, `onset_detect` and every STFT-based case. Only the Linux block was regenerated, so macOS CI fails on those cases until `python tests/test_golden.py --update` runs on a Mac.
 
 ## Medium
 
